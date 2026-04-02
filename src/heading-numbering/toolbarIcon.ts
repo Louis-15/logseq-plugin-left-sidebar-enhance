@@ -1,136 +1,191 @@
 /**
- * Toolbar icon for per-page heading numbering activation
+ * 工具栏按钮模块
+ * 
+ * 提供两个独立的工具栏按钮（防止误触）：
+ * - 开启编号 ✅：授权当前页面开启自动编号
+ * - 清除编号 🗑️：删除当前页面所有编号 + 取消授权
  */
 
 import { createElementWithAttributes } from '../util/domUtils'
 import { isPageActive, applyHeadingNumbersToPage, togglePageState } from './index'
 
 let currentPageName: string = ''
-
-let toolbarIcon: HTMLElement | null = null
+let enableIcon: HTMLElement | null = null
+let cleanupIcon: HTMLElement | null = null
 let isHandlingClick = false
 
 /**
- * Create and add toolbar icon
+ * 创建工具栏按钮
  */
 export const createToolbarIcon = (pageName: string) => {
-    // Remove existing icon if present
+    // 移除已有按钮
     removeToolbarIcon()
     currentPageName = pageName
 
-    // Find toolbar area - try multiple selectors for robustness
+    // 查找工具栏区域
     let toolbar = parent.document.querySelector('#head>.r') as HTMLElement
     if (!toolbar) {
-        // Fallback to alternative selector
         toolbar = parent.document.querySelector('.cp__header-right-menu') as HTMLElement
     }
     if (!toolbar) {
-        console.warn('Toolbar not found - heading numbering toggle icon could not be added')
+        console.warn('未找到工具栏区域，无法添加编号按钮')
         return
     }
 
-    // Create icon button
     const isActive = isPageActive(pageName)
-    toolbarIcon = createElementWithAttributes('a', {
+
+    // === 按钮1：开启编号 ===
+    enableIcon = createElementWithAttributes('a', {
         class: 'button',
-        id: 'lse-heading-numbering-toggle',
-        title: isActive
-            ? 'Heading numbering is enabled for this page (click to disable)'
-            : 'Heading numbering is disabled for this page (click to enable)',
+        id: 'lse-heading-numbering-enable',
+        title: isActive ? '当前页面已授权自动编号' : '编号未开启（点击开启）',
         style: `
-            cursor: pointer;
-            opacity: ${isActive ? '1' : '0.4'};
+            cursor: ${isActive ? 'not-allowed' : 'pointer'};
+            opacity: ${isActive ? '0.3' : '1'};
+            pointer-events: ${isActive ? 'none' : 'auto'};
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 0 8px;
+            padding: 0 6px;
         `
     })
 
-    // Add icon (using numbers 1,2,3 to represent heading hierarchy)
-    toolbarIcon.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <text x="0" y="6" font-size="7" font-weight="bold">1</text>
-            <text x="0" y="12" font-size="6" font-weight="bold">1.1</text>
-            <text x="0" y="16" font-size="5" font-weight="bold">1.1.1</text>
+    // 开启编号图标：带编号的列表
+    enableIcon.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="10" y1="6" x2="21" y2="6"/>
+            <line x1="10" y1="12" x2="21" y2="12"/>
+            <line x1="10" y1="18" x2="21" y2="18"/>
+            <text x="1" y="8" font-size="8" font-weight="bold" fill="currentColor" stroke="none">1</text>
+            <text x="1" y="14" font-size="8" font-weight="bold" fill="currentColor" stroke="none">2</text>
+            <text x="1" y="20" font-size="8" font-weight="bold" fill="currentColor" stroke="none">3</text>
         </svg>
     `
 
-    // Add click handler; reference dynamic currentPageName
-    toolbarIcon.addEventListener('click', async () => {
+    // 开启编号点击事件
+    enableIcon.addEventListener('click', async () => {
         if (isHandlingClick) return
         isHandlingClick = true
         try {
-            // Use shared togglePageState which updates settings and returns {newState, hadEntry}
-            const result = await togglePageState(currentPageName)
-            const newState = result.newState
-            const hadEntry = result.hadEntry
-
-            if (newState) await applyHeadingNumbersToPage(currentPageName)
-
-            // Update visual state and recreate icon if needed
-            updateToolbarIconState(newState)
-            if (!toolbarIcon || !toolbarIcon.parentNode) createToolbarIcon(currentPageName)
-
-            // Single concise message to avoid duplicates
-            // const storageMode = (logseq.settings?.["pageStateStorageMode"] as string) || logseq.settings?.["toc.pageStateStorageMode"] as string
-            let combinedMsg = ''
-            // Build message using hadEntry and newState — storageMode used only for wording
-            if (newState) {
-                combinedMsg = hadEntry ? 'Page enabled and updated' : 'Page enabled and saved'
-            } else {
-                combinedMsg = hadEntry ? 'Page disabled and removed from storage' : 'Page disabled'
+            const currentActive = isPageActive(currentPageName)
+            if (!currentActive) {
+                // 开启编号
+                await togglePageState(currentPageName)
+                await applyHeadingNumbersToPage(currentPageName)
+                updateToolbarIconStates(true)
+                await logseq.UI.showMsg('✅ 已开启当前页面的自动编号', 'success', { timeout: 2000 })
             }
-            await logseq.UI.showMsg(combinedMsg, 'info', { timeout: 1800 })
         } catch (error) {
-            console.error('Error handling toolbar icon click', error)
-            await logseq.UI.showMsg('Error toggling heading numbering', 'error')
+            console.error('开关编号失败:', error)
+            await logseq.UI.showMsg('操作失败', 'error')
         } finally {
             setTimeout(() => { isHandlingClick = false }, 300)
         }
     })
 
-    // Insert before the first child or append
+    // === 按钮2：清除编号 ===
+    cleanupIcon = createElementWithAttributes('a', {
+        class: 'button',
+        id: 'lse-heading-numbering-cleanup',
+        title: '清除当前页面所有编号并取消授权',
+        style: `
+            cursor: pointer;
+            opacity: 0.6;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
+        `
+    })
+
+    // 清除编号图标：带叉号的列表
+    cleanupIcon.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="10" y1="6" x2="21" y2="6"/>
+            <line x1="10" y1="12" x2="21" y2="12"/>
+            <line x1="10" y1="18" x2="21" y2="18"/>
+            <line x1="1" y1="6" x2="7" y2="12" stroke="red" stroke-width="2.5"/>
+            <line x1="7" y1="6" x2="1" y2="12" stroke="red" stroke-width="2.5"/>
+            <text x="1" y="20" font-size="8" font-weight="bold" fill="currentColor" stroke="none">×</text>
+        </svg>
+    `
+
+    // 清除编号点击事件
+    cleanupIcon.addEventListener('click', async () => {
+        if (isHandlingClick) return
+        isHandlingClick = true
+        try {
+            const currentActive = isPageActive(currentPageName)
+            if (currentActive) {
+                // 先取消授权
+                await togglePageState(currentPageName)
+            }
+            // togglePageState 在取消授权时会自动执行 cleanup
+            updateToolbarIconStates(false)
+            await logseq.UI.showMsg('🗑️ 已清除编号并取消授权', 'warning', { timeout: 2000 })
+        } catch (error) {
+            console.error('清除编号失败:', error)
+            await logseq.UI.showMsg('操作失败', 'error')
+        } finally {
+            setTimeout(() => { isHandlingClick = false }, 300)
+        }
+    })
+
+    // 插入按钮到工具栏
     if (toolbar.firstChild) {
-        toolbar.insertBefore(toolbarIcon, toolbar.firstChild)
+        toolbar.insertBefore(cleanupIcon, toolbar.firstChild)
+        toolbar.insertBefore(enableIcon, toolbar.firstChild)
     } else {
-        toolbar.appendChild(toolbarIcon)
+        toolbar.appendChild(enableIcon)
+        toolbar.appendChild(cleanupIcon)
     }
 }
 
 /**
- * Update toolbar icon state
+ * 更新两个按钮的视觉状态
  */
-const updateToolbarIconState = (isActive: boolean) => {
-    if (!toolbarIcon) return
-
-    toolbarIcon.style.opacity = isActive ? '1' : '0.4'
-    toolbarIcon.title = isActive
-        ? 'Heading numbering is enabled for this page (click to disable)'
-        : 'Heading numbering is disabled for this page (click to enable)'
+const updateToolbarIconStates = (isActive: boolean) => {
+    if (enableIcon) {
+        if (isActive) {
+            enableIcon.style.opacity = '0.3'
+            enableIcon.style.pointerEvents = 'none'
+            enableIcon.style.cursor = 'not-allowed'
+            enableIcon.title = '当前页面已授权自动编号'
+        } else {
+            enableIcon.style.opacity = '1'
+            enableIcon.style.pointerEvents = 'auto'
+            enableIcon.style.cursor = 'pointer'
+            enableIcon.title = '编号未开启（点击开启）'
+        }
+    }
 }
 
 /**
- * Remove toolbar icon
+ * 移除工具栏按钮
  */
 export const removeToolbarIcon = () => {
-    if (toolbarIcon && toolbarIcon.parentNode) {
-        toolbarIcon.parentNode.removeChild(toolbarIcon)
-        toolbarIcon = null
+    if (enableIcon && enableIcon.parentNode) {
+        enableIcon.parentNode.removeChild(enableIcon)
+        enableIcon = null
+    }
+    if (cleanupIcon && cleanupIcon.parentNode) {
+        cleanupIcon.parentNode.removeChild(cleanupIcon)
+        cleanupIcon = null
     }
 }
 
 /**
- * Update toolbar icon for new page
+ * 页面切换时更新工具栏按钮
  */
 export const updateToolbarIcon = (pageName: string) => {
     currentPageName = pageName
 
-    if (!toolbarIcon) {
+    if (!enableIcon) {
         createToolbarIcon(pageName)
         return
     }
 
     const isActive = isPageActive(pageName)
-    updateToolbarIconState(isActive)
+    updateToolbarIconStates(isActive)
 }
+

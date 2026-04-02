@@ -10,6 +10,32 @@ import { normalizePageHeadingsInternal } from '../auto-heading-level'
 
 let isFileBasedGraph = false
 
+// === 块编号状态管理（存储在插件设置中，不使用 block properties）===
+
+/**
+ * 获取块的编号状态（skip / lock / repeat / undefined）
+ * 使用扁平键 headingState_{uuid} 直接存储，避免嵌套对象的延迟与覆盖问题
+ */
+export const getBlockHeadingState = (blockUuid: string): string | undefined => {
+    const val = logseq.settings?.[`headingState_${blockUuid}`]
+    if (val && typeof val === 'string') return val
+    return undefined
+}
+
+/**
+ * 设置块的编号状态
+ * 扁平化存储：每个块一个独立的顶层 key，同步生效，没有延迟
+ */
+export const setBlockHeadingState = (blockUuid: string, state: string | null) => {
+    const key = `headingState_${blockUuid}`
+    if (state === null) {
+        // 写入空字符串表示清除（Logseq 不支持真正删除 key）
+        logseq.updateSettings({ [key]: '' })
+    } else {
+        logseq.updateSettings({ [key]: state })
+    }
+}
+
 // Top-level regular expressions and helpers
 const HEADING_HASHES_GENERIC = /^#+\s+/
 const HEADING_HASHES_PATTERN = /^#{1,6}\s+/
@@ -209,11 +235,15 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
 
 
 /**
- * Recursively update hierarchical blocks with numbering
- * @param headers Hierarchical headers to process
- * @param parentNumbers Array of parent numbers (e.g., [1, 2] for "1.2")
- * @param newDelimiter New delimiter to use
- * @param oldDelimiter Old delimiter to detect
+ * 基于"看上一个同级兄弟"逻辑的编号推算
+ * 
+ * 核心规则：
+ * 1. heading-num:: skip → 豁免：不修改、不参与编号序列
+ * 2. heading-num:: lock → 锁定：不修改文本，提取编号供后续兄弟参考
+ * 3. 无属性 → 自动编号：基于上一个同级兄弟的编号 +1
+ * 
+ * 每个标题的编号 = 找到上一个非 skip 同级兄弟的编号 + 1
+ * 如果是该层级的第一个标题，编号为 父标题编号.1
  */
 const updateHierarchicalBlocks = async (
     headers: HierarchicalTocBlock[],
@@ -221,40 +251,83 @@ const updateHierarchicalBlocks = async (
     newDelimiter: string,
     oldDelimiter: string
 ): Promise<void> => {
-    // Use level-indexed counters to reliably number headers across siblings
-    const counters = new Array(7).fill(0) // 1..6
 
-    const traverse = async (nodes: HierarchicalTocBlock[]) => {
-        for (const node of nodes) {
+    /**
+     * 处理同级标题列表
+     * @param siblings 同级标题数组
+     * @param parentNumberStr 父标题的编号字符串（如 "6"）,顶级标题为空
+     */
+    const processSiblings = async (siblings: HierarchicalTocBlock[], parentNumberStr: string) => {
+        // 记录上一个非 skip 同级标题的序号（仅最后一段数字）
+        let lastSiblingNumber = 0
+
+        for (const node of siblings) {
             const level = node.level || 1
 
-            // Increment counter for this level and reset deeper levels
-            counters[level] = (counters[level] || 0) + 1
-            for (let l = level + 1; l <= 6; l++) counters[l] = 0
+            // 从插件设置读取编号状态（而非 block properties）
+            const headingNumProp = getBlockHeadingState(node.uuid)
 
-            // Build current numbers from counters (1..level)
-            const currentNumbers: number[] = []
-            for (let l = 1; l <= level; l++) {
-                if (counters[l] && counters[l] > 0) currentNumbers.push(counters[l])
+            // 1. 豁免检测（最高优先级）
+            if (headingNumProp === 'skip') {
+                // 跳过此标题，不修改、不影响编号序列
+                // 但仍需递归处理其子标题
+                if (node.children && node.children.length > 0) {
+                    // skip 标题的子标题继承父级的编号前缀
+                    await processSiblings(node.children, parentNumberStr)
+                }
+                continue
             }
 
-            const expectedNumber = currentNumbers.join(newDelimiter)
+            // 2. 锁定检测（lock 和 repeat 等同处理）
+            if (headingNumProp === 'lock' || headingNumProp === 'repeat') {
+                // 不修改标题文本，但提取其编号供后续兄弟参考
+                const fullContent = node.content || ''
+                const lines = fullContent.split(/\r?\n/)
+                const firstLine = lines.length > 0 ? lines[0] : ''
+                
+                // 从标题文本中提取编号
+                const extractedNumber = extractNumberFromHeading(firstLine, oldDelimiter)
+                if (extractedNumber !== null) {
+                    // 提取最后一段数字作为当前层级的序号
+                    const parts = extractedNumber.split(/[.\-_→\s]+/).filter(Boolean)
+                    const lastPart = parseInt(parts[parts.length - 1], 10)
+                    if (!isNaN(lastPart)) {
+                        lastSiblingNumber = lastPart
+                    }
+                }
 
-            // Work only on the first line of the block (preserve properties in later lines)
+                // 递归处理锁定标题的子标题
+                if (node.children && node.children.length > 0) {
+                    // 子标题的父编号 = 当前锁定标题的完整编号
+                    const currentFullNumber = extractedNumber || (parentNumberStr ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}` : `${lastSiblingNumber}`)
+                    await processSiblings(node.children, currentFullNumber)
+                }
+                continue
+            }
+
+            // 3. 自动编号（无属性的普通标题）
+            // 基于上一个同级兄弟的编号 +1
+            lastSiblingNumber += 1
+
+            // 构建完整编号
+            const currentFullNumber = parentNumberStr
+                ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}`
+                : `${lastSiblingNumber}`
+
+            // 处理标题文本
             const fullContent = node.content || ''
             const lines = fullContent.split(/\r?\n/)
             const firstLine = lines.length > 0 ? lines[0] : ''
 
-            // Extract old number from the first line if present (delimiter-specific)
+            // 提取旧编号（如果有）
             let { number: oldNumber, textWithoutNumber } = extractOldNumber(firstLine, oldDelimiter)
 
-            // If delimiter-specific extract failed, always try to extract number-like prefixes from first line
+            // 如果分隔符提取失败，尝试通用提取
             if (!oldNumber) {
                 const mm = firstLine.match(MULTI_NUMBER_PATTERN)
                 if (mm) {
                     const hashTags = mm[1]
                     const restText = mm[2]
-                    // Attempt to extract the numeric part between hashes and restText
                     const numPartMatch = firstLine.match(new RegExp(`^${escapeForRegex(hashTags)}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
                     const numPart = numPartMatch ? numPartMatch[1].trim() : null
                     if (numPart) {
@@ -262,7 +335,6 @@ const updateHierarchicalBlocks = async (
                         textWithoutNumber = `${hashTags} ${restText}`
                     }
                 }
-                // Fallback: try a simple extraction on first line
                 if (!oldNumber) {
                     const gen = extractGeneralNumber(firstLine)
                     if (gen) {
@@ -272,16 +344,16 @@ const updateHierarchicalBlocks = async (
                 }
             }
 
-            // Normalize numbers for comparison (handle different delimiters/spaces)
-            const normalizedExpected = normalizeNumberString(expectedNumber, newDelimiter)
+            // 比较当前编号与期望编号
+            const normalizedExpected = normalizeNumberString(currentFullNumber, newDelimiter)
             const normalizedOld = oldNumber ? normalizeNumberString(oldNumber, newDelimiter) : null
 
             let needsUpdate = false
             if (!oldNumber) {
-                // No existing number -> needs numbering
+                // 没有编号 → 需要添加
                 needsUpdate = true
             } else if (normalizedOld !== normalizedExpected) {
-                // Existing number present but differs when normalized -> update
+                // 编号不一致 → 需要更新
                 needsUpdate = true
             }
 
@@ -289,27 +361,38 @@ const updateHierarchicalBlocks = async (
                 const textOnly = textWithoutNumber.replace(HEADING_HASHES_GENERIC, '')
                 if (textOnly.trim()) {
                     const hashTags = '#'.repeat(level)
-                    const newFirstLine = `${hashTags} ${expectedNumber}${newDelimiter} ${textOnly}`
-                    // Reconstruct full content: replace only first line, keep remaining lines (properties etc.)
+                    const newFirstLine = `${hashTags} ${currentFullNumber} ${textOnly}`
                     const newFullContent = [newFirstLine, ...lines.slice(1)].join('\n')
                     if (newFullContent !== fullContent) {
                         try {
                             await logseq.Editor.updateBlock(node.uuid, newFullContent)
                             node.content = newFullContent
                         } catch (error) {
-                            console.error(`Failed to update block ${node.uuid}:`, error)
+                            console.error(`更新块 ${node.uuid} 失败:`, error)
                         }
                     }
                 }
             }
 
+            // 递归处理子标题
             if (node.children && node.children.length > 0) {
-                await traverse(node.children)
+                await processSiblings(node.children, currentFullNumber)
             }
         }
     }
 
-    await traverse(headers)
+    // 从顶级标题开始处理
+    await processSiblings(headers, '')
+}
+
+/**
+ * 从标题文本中提取编号
+ * 例如 "## 6.5 关系变化" → "6.5"
+ */
+const extractNumberFromHeading = (firstLine: string, delimiter: string): string | null => {
+    const { number } = extractOldNumber(firstLine, delimiter)
+    if (number) return number
+    return extractGeneralNumber(firstLine)
 }
 
 /**
@@ -419,7 +502,7 @@ const resetCleanupFlag = async (): Promise<void> => {
  * Clean up heading numbers from a single page
  * Returns the number of blocks cleaned
  */
-const cleanupPageHeadingNumbers = async (pageName: string, oldDelimiter: string): Promise<number> => {
+export const cleanupPageHeadingNumbers = async (pageName: string, oldDelimiter: string): Promise<number> => {
     try {
         // Get all blocks from the page
         const pageBlocks = await logseq.Editor.getPageBlocksTree(pageName)
@@ -450,7 +533,14 @@ const cleanupPageHeadingNumbers = async (pageName: string, oldDelimiter: string)
                 let cleanedText = ''
                 let hashTags = ''
 
-                if (oldNumber) {
+                // 获取当前块用户设置的状态：'skip' | 'lock' | 'repeat' | null
+                const state = getBlockHeadingState(header.uuid)
+                const isLockedOrRepeat = state === 'lock' || state === 'repeat'
+
+                if (isLockedOrRepeat) {
+                    // 处于 lock 或 repeat 状态的标题不进行清理
+                    shouldClean = false
+                } else if (oldNumber) {
                     // Has a number detected by delimiter pattern
                     shouldClean = true
                     const textOnly = textWithoutNumber.replace(HEADING_HASHES_PATTERN, '')

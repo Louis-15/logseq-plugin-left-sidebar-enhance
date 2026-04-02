@@ -10,8 +10,9 @@ import { initSettingsDispatcher } from './settings/onSettingsChanged'
 import { removeContainer } from './util/lib'
 import { loadVisualTimer } from './visualTimer'
 import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/sethyuan/logseq-l10n
-import { initHeadingNumbering, applyHeadingNumbersToPage } from './heading-numbering'
+import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
+import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
 
 let currentPageOriginalName: PageEntity["originalName"] = ""
@@ -21,6 +22,27 @@ let logseqVersionMd: boolean = false//バージョンチェック用
 
 // export const getLogseqVersion = () => logseqVersion //バージョンチェック用
 export const booleanLogseqVersionMd = () => logseqVersionMd //バージョンチェック用
+
+export const togglePageState = async (pageName: string, forceState?: boolean) => {
+    let settings = logseq.settings?.pageSwitch as Record<string, boolean> || {}
+    const currentState = settings[pageName] || false
+    const newState = forceState !== undefined ? forceState : !currentState
+    
+    settings[pageName] = newState
+    logseq.updateSettings({ pageSwitch: settings })
+
+    // 同步给 body 一个类名，便于全页各种 CSS 做状态联动（比如顶部授权按钮置灰等）
+    if (newState) {
+        parent.document.documentElement.classList.add('lse-heading-enabled')
+    } else {
+        parent.document.documentElement.classList.remove('lse-heading-enabled')
+        const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
+        const oldDelimiter: string = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
+        await cleanupPageHeadingNumbers(pageName, oldDelimiter)
+    }
+
+    return newState
+}
 
 export const updateCurrentPage = async (pageName: string, pageUuid: PageEntity["uuid"]) => {
   currentPageOriginalName = pageName
@@ -73,6 +95,9 @@ const main = async () => {
   //階層的な見出し番号付け
   await initHeadingNumbering()
 
+  //標題浮動按鈕（跳過/鎖定/重號）
+  initHeadingButtons()
+
   //見出しレベルの自動調整
   initAutoHeadingLevel()
 
@@ -83,6 +108,8 @@ const main = async () => {
     removeContainer("lse-dataSelector-container")
     removeContainer("lse-visualTimer-container")
     removeToolbarIcon()
+    cleanupHeadingButtons()
+    parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
   logseq.App.onCurrentGraphChanged(async () => {
@@ -158,11 +185,25 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
       await refreshPageHeaders(pageName, flag ? flag : undefined)
 
     // Update toolbar icon for heading numbering
-    if (logseqVersionMd === true) updateToolbarIcon(pageName)
+    if (logseqVersionMd === true) {
+        const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
+        if (isEnabled) {
+            parent.document.documentElement.classList.add('lse-heading-enabled')
+        } else {
+            parent.document.documentElement.classList.remove('lse-heading-enabled')
+        }
+        updateToolbarIcon(pageName)
+    }
 
     // Apply file-update mode if enabled and page is active
     if (logseq.settings?.[settingKeys.toc.headingNumberFileEnable] === true) {
-      await applyHeadingNumbersToPage(pageName)
+        const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
+        if (isEnabled) {
+            parent.document.documentElement.classList.add('lse-heading-enabled')
+            await applyHeadingNumbersToPage(pageName)
+        } else {
+            parent.document.documentElement.classList.remove('lse-heading-enabled')
+        }
     }
   }, 50)
 
