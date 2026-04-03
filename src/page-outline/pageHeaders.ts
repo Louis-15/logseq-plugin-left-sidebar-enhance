@@ -35,8 +35,8 @@ export const refreshPageHeaders = async (pageName: string, zoom?: { zoomIn: bool
   if (element) {
     // element.innerHTML = "" //elementが存在する場合は中身を削除する
 
-    if (logseq.settings?.[settingKeys.toc.booleanAsZoomPage] === true) //ページ名を表示
-      generatePageButton(element)
+    // 始终显示页面名称标题
+    generatePageButton(element)
 
     const versionMd = booleanLogseqVersionMd()
     const blocks = await logseq.Editor.getPageBlocksTree(pageName) as Child[]
