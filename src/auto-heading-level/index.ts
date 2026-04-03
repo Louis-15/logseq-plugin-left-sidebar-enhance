@@ -61,29 +61,15 @@ const getHeadersWithOutlineDepth = (
 }
 
 /**
- * Preset configurations for heading level ranges
+ * 标题等级范围配置（固定为 H1-H4）
  */
-export type HeadingLevelPreset = 'h2-h6' | 'h1-h3' | 'h2-h4'
-
 export interface HeadingLevelRange {
   min: number  // Minimum heading level (1-6)
   max: number  // Maximum heading level (1-6)
 }
 
-/**
- * Get heading level range from preset
- */
-const getPresetRange = (preset: HeadingLevelPreset): HeadingLevelRange => {
-  switch (preset) {
-    case 'h1-h3':
-      return { min: 1, max: 3 }
-    case 'h2-h4':
-      return { min: 2, max: 4 }
-    case 'h2-h6':
-    default:
-      return { min: 2, max: 6 }
-  }
-}
+// 固定标题等级范围为 H1-H4
+const HEADING_LEVEL_RANGE: HeadingLevelRange = { min: 1, max: 4 }
 
 /**
  * Calculate heading level based on depth
@@ -193,9 +179,8 @@ export const normalizePageHeadingsInternal = async (pageName: string, silent: bo
   }
 
   // Get settings
-  const preset = (logseq.settings?.[settingKeys.toc.autoHeadingLevelPreset] as HeadingLevelPreset) || 'h2-h6'
   const reserveH1 = logseq.settings?.[settingKeys.toc.autoHeadingLevelReserveH1] === true
-  const range = getPresetRange(preset)
+  const range = HEADING_LEVEL_RANGE
 
   try {
     // Get page blocks
@@ -265,9 +250,8 @@ export const normalizeSelectionHeadings = async (): Promise<number> => {
   }
 
   // Get settings
-  const preset = (logseq.settings?.[settingKeys.toc.autoHeadingLevelPreset] as HeadingLevelPreset) || 'h2-h6'
   const reserveH1 = logseq.settings?.[settingKeys.toc.autoHeadingLevelReserveH1] === true
-  const range = getPresetRange(preset)
+  const range = HEADING_LEVEL_RANGE
 
   try {
     // Get current block
@@ -370,9 +354,8 @@ export const handleAutoHeadingLevelSettingsChanged = async (
     // This will show/hide the preset and H1 reservation settings based on the new state
     return true
   }
-  // If autoHeadingLevelPreset or autoHeadingLevelReserveH1 changes, reapply Auto Heading Level to the current page
+  // If autoHeadingLevelReserveH1 changes, reapply Auto Heading Level to the current page
   if (
-    oldSet[settingKeys.toc.autoHeadingLevelPreset] !== newSet[settingKeys.toc.autoHeadingLevelPreset] ||
     oldSet[settingKeys.toc.autoHeadingLevelReserveH1] !== newSet[settingKeys.toc.autoHeadingLevelReserveH1]
   ) {
     const currentPage = await logseq.Editor.getCurrentPage()

@@ -84,15 +84,6 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
             if (cfg[settingKeys.toc.autoHeadingLevelEnabled] === true) {
                 list.push(
                     {
-                        key: settingKeys.toc.autoHeadingLevelPreset,
-                        title: '标题等级范围预设',
-                        type: 'enum',
-                        enumChoices: ['h2-h6', 'h1-h3', 'h2-h4'],
-                        enumPicker: 'select',
-                        default: 'h2-h6',
-                        description: '选择标准化时要使用的标题等级范围',
-                    },
-                    {
                         key: settingKeys.toc.autoHeadingLevelReserveH1,
                         title: '保留 H1 给页面标题',
                         type: 'boolean',
