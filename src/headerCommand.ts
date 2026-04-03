@@ -19,7 +19,7 @@ const registerHeaderCommand = (level: HeaderLevel) => {
 export const headerCommand = () => {
     const versionMd = booleanLogseqVersionMd()
     if (versionMd === true) {
-        // ヘッダーレベル1-6を登録
+        // 注册标题级别 1-6 的插入命令
         ([1, 2, 3, 4, 5, 6] as HeaderLevel[]).forEach(level => {
             registerHeaderCommand(level)
         })
@@ -29,7 +29,7 @@ export const headerCommand = () => {
 const insertHeader = async (headerString: string) => {
     const currentBlock = await logseq.Editor.getCurrentBlock() as { content: BlockEntity["content"], uuid: BlockEntity["uuid"], properties: BlockEntity["properties"] } | null
     if (currentBlock) {
-        // # ,## ,### ,#### ,##### ,###### のいずれかが先頭にあったら削除する
+        // 如果行首已有 #、## 等标题标记，则先删除再替换
         currentBlock.content = currentBlock.content.replace(/^#+ /, "")
         currentBlock.content = headerString + " " + currentBlock.content
         await logseq.Editor.updateBlock(currentBlock.uuid, currentBlock.content, currentBlock.properties)

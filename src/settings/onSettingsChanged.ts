@@ -8,10 +8,10 @@ import { settingsTemplate } from '../settings'
 import { booleanLogseqVersionMd } from '..'
 
 /**
- * 中央設定ディスパッチャ
- * - プラグイン内の各機能モジュールは個別に `logseq.onSettingsChanged` を登録せず、
- *   ここで1つだけ登録されたイベントから各モジュールのハンドラを呼び出します。
- * - これにより設定変更の監視ポイントが一箇所にまとまり、保守性と動作の追跡が容易になります。
+ * 中央设置分发器
+ * - 插件内各功能模块不单独注册 `logseq.onSettingsChanged`，
+ *   而是统一由此处唯一的监听器分发到各模块的处理函数。
+ * - 这样设置变更的监控点集中在一处，提升可维护性和调试便利性。
  */
 export const initSettingsDispatcher = () => {
     logseq.onSettingsChanged(async (newSet: LSPluginBaseInfo['settings'], oldSet: LSPluginBaseInfo['settings']) => {
@@ -48,7 +48,7 @@ export const initSettingsDispatcher = () => {
                                                     console.error('auto heading level settings handler failed', e)
                                        }
 
-                          // 各ハンドラが変更を報告した場合にのみ設定UIを再表示する
+                          // 主要处理函数报告了设置变更时，重新加载设置 UI
                           if (shouldShowSettings) {
                                        logseq.useSettingsSchema(settingsTemplate(booleanLogseqVersionMd(), newSet))
                                        logseq.hideSettingsUI()

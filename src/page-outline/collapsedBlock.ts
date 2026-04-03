@@ -6,7 +6,7 @@ import { getParentFromUuid } from "../util/query/advancedQuery"
 const scrollToAndSelectBlock = async (blockUuid: string) => {
   const element = parent.document.getElementById('block-content-' + blockUuid) as HTMLDivElement | null
   if (element) {
-    scrollToWithOffset(element) // 共通関数を利用
+    scrollToWithOffset(element) // 使用通用滚动函数
     setTimeout(() => logseq.Editor.selectBlock(blockUuid), 50)
     return true
   }

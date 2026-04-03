@@ -29,8 +29,8 @@ export const removeMarkdownImage = (blockContent: string) => removePattern(block
 //   for (let j = 0; j < keys.length; j++) {
 //     let key = keys[j]
 //     const values = properties[key]
-//     //backgroundColorをbackground-colorにする
-//     //キーの途中で一文字大文字になっている場合は小文字にしてその前にハイフンを追加する
+//     // 将 backgroundColor 转为 background-color 格式
+//     // 当键名中间出现大写字母时，转为小写并在前面加连字符
 //     key = key.replace(/([A-Z])/g, "-$1").toLowerCase()
 //     blockContent = blockContent.replace(`${key}:: ${values}`, "")
 //     blockContent = blockContent.replace(`${key}::`, "")

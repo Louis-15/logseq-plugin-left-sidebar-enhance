@@ -5,23 +5,23 @@ const key = "lse-FavAndRecent"
 let processing = false
 
 export const loadFavAndRecent = () => {
-    // 設定変更は中央ディスパッチャで処理するため、ここでは登録しない
+    // 设置变更由中央分发器统一处理，此处不单独注册
 
-    // 初回実行
+    // 首次执行过滤
     if (logseq.settings?.[settingKeys.common.booleanFavAndRecent] === true)
         filterRecentItems()
 }
 
 /**
- * 設定変更時のハンドラ（中央ディスパッチャから呼び出される）
- * - `booleanFavAndRecent` が変更されたときにフィルタ処理を開始/停止する
+ * 设置变更时的处理函数（由中央分发器调用）
+ * 当 `booleanFavAndRecent` 变更时，启动/停止收藏夹和历史记录的去重过滤
  */
 export const handleFavAndRecentSettingsChanged = async (newSet: LSPluginBaseInfo['settings'], oldSet: LSPluginBaseInfo['settings']): Promise<void> => {
     if (oldSet[settingKeys.common.booleanFavAndRecent] !== newSet[settingKeys.common.booleanFavAndRecent])
         if (newSet[settingKeys.common.booleanFavAndRecent] === true)
             filterRecentItems()
         else
-            removeProvideStyle(key)//非表示にする
+            removeProvideStyle(key) // 移除过滤样式
 }
 
 
@@ -47,7 +47,7 @@ const filterRecentItems = async () => {
         // console.log("Hide duplicate favorites and history")
     }
 
-    // 10分毎に再実行
+    // 每 10 分钟重新执行一次过滤
     setTimeout(() => {
         if (logseq.settings?.[settingKeys.common.booleanFavAndRecent] === true)
             filterRecentItems()

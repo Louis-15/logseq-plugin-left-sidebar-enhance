@@ -13,7 +13,7 @@ export const whenOpenJournals = (journalsEle: HTMLDivElement, versionMd: boolean
     setTimeout(() =>
         processing = false, 1000)
 
-    //"lse-toc-content"に代わりのメッセージを入れる(クリアも兼ねている)
+    // 清空 TOC 内容区域并重建日志标题列表
     const element = parent.document.getElementById("lse-toc-content") as HTMLDivElement | null
     if (element && journalsEle) {
         clearCachedHeaders()
@@ -32,19 +32,19 @@ export const whenOpenJournals = (journalsEle: HTMLDivElement, versionMd: boolean
 
 
 const getJournalTitles = (journalsEle: HTMLDivElement, tocContentEle: HTMLDivElement, versionMd: boolean) => {
-    // 表示処理
+    // 显示处理
     updateJournalList(journalsEle, tocContentEle, versionMd)
 
-    // div#main-content-containerをスクロールしたら、journalTitlesを更新する
+    // 当主内容区域滚动时，更新日志标题列表
     const mainContentContainer = parent.document.getElementById("main-content-container") as HTMLDivElement | null
     if (mainContentContainer) {
-        // スクロールイベント用
+        // 滚动事件处理函数
         const scrollEvent = () => {
-            const journalsEle = parent.document.getElementById("journals") as HTMLDivElement | null // イベント用エレメント取得
+            const journalsEle = parent.document.getElementById("journals") as HTMLDivElement | null // 获取日志容器元素
             if (journalsEle)
-                updateJournalList(journalsEle, tocContentEle, versionMd) // 表示処理
+                updateJournalList(journalsEle, tocContentEle, versionMd) // 更新日志列表
             else
-                mainContentContainer.removeEventListener("scroll", scrollEvent) // journalsがない場合はイベントを解除
+                mainContentContainer.removeEventListener("scroll", scrollEvent) // 日志不存在时解除事件监听
         }
         mainContentContainer.addEventListener("scroll", scrollEvent)
     }
@@ -67,24 +67,24 @@ const updateJournalList = (journalsEle: HTMLDivElement, tocContentEle: HTMLDivEl
             const journalTitleEle = document.createElement("li")
             journalTitleEle.className = "journal-title"
             const date = new Date(title)
-            //dateが正常でなければreturn
+            // 日期解析失败时
             if (isNaN(date.getTime())) {
-                // 正常ではない場合は、タイトルのみ表示
+                // 日期无效，仅显示标题文本
                 journalTitleEle.textContent = title
                 journalTitleEle.title = "Ctrl-> Open single page"
             } else {
-                //Intl.RelativeTimeFormatを使い、現在日時との相対的な日付差をローカライズした文字列に変換する
+                // 使用 Intl.RelativeTimeFormat 将日期差转换为本地化的相对时间字符串
                 const diff = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                 journalTitleEle.innerHTML = title + "<span style='font-size:small;margin-left:1.5em'>" + rtf.format(Math.round(diff), "day") as string + "</span>"
 
-                //Intl.DateTimeFormatを使い、曜日を表示する
+                // 使用 Intl.DateTimeFormat 显示星期几
                 const dayOfWeekStr = new Intl.DateTimeFormat("default", { weekday: "long" }).format(date)
                 journalTitleEle.title = dayOfWeekStr + "\n\n" + "Ctrl-> Open single page"
             }
 
             journalTitleEle.style.cursor = "pointer"
             journalTitleEle.onclick = async (ev) => {
-                logseq.showMainUI() // ダブルクリック対策
+                logseq.showMainUI() // 防双击误触
                 setTimeout(() => {
                     logseq.hideMainUI()
                 }, 100)
@@ -96,13 +96,13 @@ const updateJournalList = (journalsEle: HTMLDivElement, tocContentEle: HTMLDivEl
                     if (ev.ctrlKey)
                         pageOpen(title, false, false)
                     else {
-                        const cancelButtonEle = parent.document.getElementById("cancel-exclude") as HTMLButtonElement | null //Single Journalプラグイン対策
+                        const cancelButtonEle = parent.document.getElementById("cancel-exclude") as HTMLButtonElement | null // 兼容 Single Journal 插件
                         if (cancelButtonEle) cancelButtonEle.click()
 
                         const journalEle = parent.document.getElementById(title) as HTMLAnchorElement | null
                         if (journalEle) {
-                            scrollToWithOffset(journalEle) // 共通関数を利用
-                            //スクロールしたら、タイトルを表示する
+                            scrollToWithOffset(journalEle) // 使用通用滚动函数
+                            // 滚动后高亮标题短暂提示
                             journalEle.style.backgroundColor = "var(--ls-selection-background-color)"
                             setTimeout(() => journalEle.style.backgroundColor = "", 1200)
                         }

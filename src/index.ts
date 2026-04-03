@@ -14,14 +14,24 @@ import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolba
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
 
+// 当前页面原始名称（全局状态，供各模块读取）
 let currentPageOriginalName: PageEntity["originalName"] = ""
 // let currentPageUuid: PageEntity["uuid"] = ""
-let logseqVersion: string = ""//バージョンチェック用
-let logseqVersionMd: boolean = false//バージョンチェック用
 
-// export const getLogseqVersion = () => logseqVersion //バージョンチェック用
-export const booleanLogseqVersionMd = () => logseqVersionMd //バージョンチェック用
+// Logseq 版本号字符串，用于版本兼容性检查
+let logseqVersion: string = ""
+// 是否为 Markdown 模式（0.10.x 及以下为 true，0.11+ 为数据库模式）
+let logseqVersionMd: boolean = false
 
+// 对外暴露的版本模式查询方法
+export const booleanLogseqVersionMd = () => logseqVersionMd
+
+/**
+ * 切换指定页面的自动编号授权状态
+ * @param pageName - 页面名称
+ * @param forceState - 可选，强制指定目标状态（true=启用, false=关闭）
+ * @returns 切换后的新状态
+ */
 export const togglePageState = async (pageName: string, forceState?: boolean) => {
     let settings = logseq.settings?.pageSwitch as Record<string, boolean> || {}
     const currentState = settings[pageName] || false
@@ -35,6 +45,7 @@ export const togglePageState = async (pageName: string, forceState?: boolean) =>
         parent.document.documentElement.classList.add('lse-heading-enabled')
     } else {
         parent.document.documentElement.classList.remove('lse-heading-enabled')
+        // 关闭编号时，自动清理该页面已有的编号文本
         const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
         const oldDelimiter: string = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
         await cleanupPageHeadingNumbers(pageName, oldDelimiter)
@@ -43,62 +54,62 @@ export const togglePageState = async (pageName: string, forceState?: boolean) =>
     return newState
 }
 
+/** 更新当前页面状态（由路由检查模块在页面切换时调用） */
 export const updateCurrentPage = async (pageName: string, pageUuid: PageEntity["uuid"]) => {
   currentPageOriginalName = pageName
   // currentPageUuid = pageUuid
 }
 
-export const getCurrentPageOriginalName = () => currentPageOriginalName // 現在のページ名を取得
-// export const getCurrentPageUuid = () => currentPageUuid // 現在のページUUIDを取得
+/** 获取当前页面原始名称 */
+export const getCurrentPageOriginalName = () => currentPageOriginalName
 
 
 
-/* main */
+/* 插件主入口函数 */
 const main = async () => {
 
-  //l10n
-  // ユーザー設定言語を取得し、L10Nをセットアップ
+  // === 国际化初始化 ===
+  // 获取用户首选语言并加载对应的翻译资源
   const { preferredLanguage, preferredDateFormat } = await loadLogseqL10n()
 
-  // First time settings
+  // 首次安装时自动弹出设置面板，引导用户配置
   if (!logseq.settings)
     setTimeout(() =>
       logseq.showSettingsUI(), 300)
 
   logseqVersionMd = await checkLogseqVersion()
 
-  /* user settings */
-  // register settings schema based on current settings so dependent fields can be hidden
+  // === 设置面板初始化 ===
+  // 根据当前设置值动态生成设置模板（控制条件性字段的显示/隐藏）
   logseq.useSettingsSchema(settingsTemplate(logseqVersionMd, logseq.settings ?? undefined))
 
-
-  // 中央設定ディスパッチャを初期化（各モジュールの設定ハンドラを一箇所で呼ぶ）
+  // 初始化中央设置变更分发器（将各模块的设置回调集中管理）
   setTimeout(() =>
     initSettingsDispatcher()
     , 500)
 
-  //TOC
+  // === 侧边栏大纲（TOC）模块初始化 ===
   setTimeout(() =>
     setupTOCHandlers(logseqVersionMd)
     , 300)
 
-  //マウスオーバー
+  // === 侧边栏鼠标悬停弹出功能 ===
   loadShowByMouseOver()
 
-  //お気に入りと履歴の重複を非表示
+  // === 收藏夹和历史记录去重 ===
   loadFavAndRecent()
 
-  //階層的な見出し番号付け
+  // === 层级标题自动编号初始化 ===
   await initHeadingNumbering()
 
-  //標題浮動按鈕（跳過/鎖定/重號）
+  // === 标题编号右键菜单（跳过/锁定/重号）注册 ===
   initHeadingButtons()
 
-  //見出しレベルの自動調整
+  // === 标题等级自动调整初始化 ===
   initAutoHeadingLevel()
 
 
-  //プラグイン終了時
+  // === 插件卸载时的清理工作 ===
   logseq.beforeunload(async () => {
     removeContainer("lse-toc-container")
     removeContainer("lse-dataSelector-container")
@@ -107,41 +118,47 @@ const main = async () => {
     parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
+  // === 图谱切换时重置状态 ===
   logseq.App.onCurrentGraphChanged(async () => {
-    //グラフが変更されたときに実行されるコールバック
     currentPageOriginalName = ""
-    // currentPageUuid = ""
     logseqVersionMd = await checkLogseqVersion()
-
   })
 
 }/* end_main */
 
 
+// ===================== 数据库变更监听（TOC 实时刷新） =====================
 
+// 防抖锁：TOC 更新过程中如果再次触发变更，则跳过后续处理
+let processingBlockChanged: boolean = false
 
-let processingBlockChanged: boolean = false//処理中 TOC更新中にブロック更新が発生した場合に処理を中断する
+// 确保 onChanged 监听器只注册一次的标志位
+export let onBlockChangedOnce: boolean = false
 
-export let onBlockChangedOnce: boolean = false//一度のみ
+/**
+ * 注册 Logseq 数据库变更监听器
+ * 当包含标题属性的块发生更新时，自动刷新侧边栏大纲
+ * 使用 onBlockChangedOnce 标志位确保只注册一次，避免重复监听
+ */
 export const onBlockChanged = () => {
 
   if (onBlockChangedOnce === true)
     return
-  onBlockChangedOnce = true //index.tsの値を書き換える
+  onBlockChangedOnce = true
   logseq.DB.onChanged(async ({ blocks }) => {
 
     if (processingBlockChanged === true
       || currentPageOriginalName === ""
       || logseq.settings!.booleanLeftTOC === false)
       return
-    //headingがあるブロックが更新されたら
-    const findBlock = blocks.find((block) => block.properties?.heading) as { uuid: BlockEntity["uuid"] } | null //uuidを得るためsomeではなくfindをつかう
+    // 在变更的块中查找含有 heading 属性的块（使用 find 而非 some 以获取 uuid）
+    const findBlock = blocks.find((block) => block.properties?.heading) as { uuid: BlockEntity["uuid"] } | null
     if (!findBlock) return
     const uuid = findBlock ? findBlock!.uuid : null
     updateToc()
 
     setTimeout(() => {
-      //ブロック更新のコールバックを登録する
+      // 为该特定块注册单独的变更回调，实现精细化监听
       if (uuid)
         logseq.DB.onBlockChanged(uuid, () => updateToc())
     }, 200)
@@ -149,37 +166,44 @@ export const onBlockChanged = () => {
   })
 }
 
-
+/** 防抖更新 TOC：300ms 内只执行一次刷新 */
 const updateToc = () => {
   if (processingBlockChanged === true)
     return
-  processingBlockChanged = true //index.tsの値を書き換える
+  processingBlockChanged = true
   setTimeout(() => {
-    refreshPageHeaders(currentPageOriginalName) //toc更新
+    refreshPageHeaders(currentPageOriginalName)
     processingBlockChanged = false
   }, 300)
 }
 
 
 
-let processingOnPageChanged: boolean = false //処理中
+// 页面切换处理的防抖锁
+let processingOnPageChanged: boolean = false
 
-//ページ読み込み時に実行コールバック
+/**
+ * 页面切换/加载时的核心回调函数
+ * 负责刷新 TOC、更新工具栏图标状态、应用自动编号等
+ * @param pageName - 目标页面名称
+ * @param flag - 可选的缩放信息（是否处于缩放模式及对应块 UUID）
+ */
 export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: boolean, zoomInUuid: BlockEntity["uuid"] }) => {
 
   if (processingOnPageChanged === true)
     return
-  processingOnPageChanged = true // return 禁止
+  processingOnPageChanged = true
 
+  // 300ms 后自动释放防抖锁，防止异常情况下永久锁死
   setTimeout(() =>
-    processingOnPageChanged = false, 300) //処理中断対策
+    processingOnPageChanged = false, 300)
 
   setTimeout(async () => {
-    // console.log("onPageChangedCallback")
+    // 1. 刷新侧边栏大纲列表
     if (logseq.settings?.[settingKeys.toc.master] === true)
       await refreshPageHeaders(pageName, flag ? flag : undefined)
 
-    // Update toolbar icon for heading numbering
+    // 2. 更新工具栏编号授权图标状态（仅 Markdown 模式）
     if (logseqVersionMd === true) {
         const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
         if (isEnabled) {
@@ -190,7 +214,7 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
         updateToolbarIcon(pageName)
     }
 
-    // Apply file-update mode if enabled and page is active
+    // 3. 若启用了文件更新模式编号，且当前页面已授权，则自动应用编号
     if (logseq.settings?.[settingKeys.toc.headingNumberFileEnable] === true) {
         const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
         if (isEnabled) {
@@ -205,19 +229,22 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
 }
 
 
-// バージョンチェック
+/**
+ * 检测 Logseq 版本，判断是否为 Markdown 模式
+ * 版本号格式示例：0.11.0 或 0.11.0-alpha+nightly.20250427
+ * 0.10.x 及以下版本使用 Markdown 文件模式，0.11+ 使用数据库模式
+ * @returns true 表示 Markdown 模式，false 表示数据库模式
+ */
 const checkLogseqVersion = async (): Promise<boolean> => {
   const logseqInfo = await logseq.App.getInfo("version") as AppInfo | any
-  //  0.11.0もしくは0.11.0-alpha+nightly.20250427のような形式なので、先頭の3つの数値(1桁、2桁、2桁)を正規表現で取得する
+  // 使用正则提取版本号的前三段数字
   const version = logseqInfo.match(/(\d+)\.(\d+)\.(\d+)/)
   if (version) {
-    logseqVersion = version[0] //バージョンを取得
-    // console.log("logseq version: ", logseqVersion)
+    logseqVersion = version[0]
 
-    // もし バージョンが0.10.*系やそれ以下ならば、logseqVersionMdをtrueにする
+    // 0.10.x 及以下版本 → Markdown 文件模式
     if (logseqVersion.match(/0\.([0-9]|10)\.\d+/)) {
       logseqVersionMd = true
-      // console.log("logseq version is 0.10.* or lower")
       return true
     } else
       logseqVersionMd = false
@@ -227,4 +254,5 @@ const checkLogseqVersion = async (): Promise<boolean> => {
 }
 
 
+// Logseq 插件就绪后执行主函数
 logseq.ready(main).catch(console.error)

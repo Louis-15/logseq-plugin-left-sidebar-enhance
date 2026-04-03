@@ -68,11 +68,11 @@ const whenToggleEvent = () => {
 }
 
 /**
- * 設定変更時のハンドラ（中央ディスパッチャから呼び出される）
- * - 表示方式・オンオフの変更を検知してスタイルやトグルを切り替える
+ * 设置变更时的处理函数（由中央分发器调用）
+ * 检测悬停弹出功能的开关状态变化，并相应地注入/移除 CSS 样式
  */
 export const handleMouseoverSettingsChanged = async (newSet: LSPluginBaseInfo['settings'], oldSet: LSPluginBaseInfo['settings']): Promise<void> => {
-    // プラグイン設定で無効が有効になった場合は、トグル也强制开启为悬停模式
+    // 当用户在设置中将悬停弹出功能从关闭切换为开启时，强制启用悬停模式
     if (oldSet[settingKeys.common.loadShowByMouseOver] === false
         && newSet[settingKeys.common.loadShowByMouseOver] === true) {
         logseq.updateSettings({ toggleShowByMouseOver: "mouseOver" })

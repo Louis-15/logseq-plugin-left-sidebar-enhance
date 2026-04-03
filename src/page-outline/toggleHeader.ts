@@ -13,9 +13,9 @@ const hideHeaderFromList = (headerName: string) => {
   processingButton = true
   setTimeout(() => processingButton = false, 300)
 
-  //リストから該当のヘッダーを削除
+  // 从大纲列表中隐藏/显示指定级别的标题
   toggleHeaderVisibility(headerName)
-  //keyToggleの色を赤にする
+  // 切换按钮颜色为红色（表示该级别已被过滤）
   const button = parent.document.getElementById(`tabbedHeadersToggle${headerName.toUpperCase()}`) as HTMLButtonElement | null
   if (button)
     button.style.color = button.style.color === "red" ?
@@ -140,7 +140,7 @@ export const generatePageButton = (element: HTMLElement) => {
   }
 
   if (headerSpace) {
-    // 既存のボタンが残っていると重複するため、クリアしてから追加する
+    // 清除已有按钮后重新创建，避免重复
     const openButton = createElementWithAttributes(
       "button",
       {
@@ -151,7 +151,7 @@ export const generatePageButton = (element: HTMLElement) => {
       currentPageOriginalName
     )
     openButton.addEventListener("click", ({ shiftKey }) => pageOpen(currentPageOriginalName, shiftKey, false))
-    // replaceChildrenで既存の子要素を置き換え、一つのみになるようにする
+    // 使用 replaceChildren 替换现有子元素，确保只保留一个按钮
     headerSpace.replaceChildren(openButton)
   }
 }

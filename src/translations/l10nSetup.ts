@@ -21,14 +21,14 @@ import zhHant from "./zh-Hant.json"
 
 
 const getUserConfigs = async (): Promise<string[]> => {
-             // 1秒待つ
+             // 等待 1 秒后再获取用户配置
              await new Promise((resolve) => setTimeout(resolve, 1000))
              const { preferredLanguage, preferredDateFormat } = await logseq.App.getUserConfigs() as { preferredDateFormat: string; preferredLanguage: string }
              return [preferredLanguage, preferredDateFormat]
 }
 
 export const loadLogseqL10n = async () => {
-             const [preferredLanguage, preferredDateFormat] = await getUserConfigs() //ユーザー設定言語を取得
+             const [preferredLanguage, preferredDateFormat] = await getUserConfigs() // 获取用户首选语言设置
 
              const translations = {
                           ja, af, de, es, fr, id, it, ko, "nb-NO": nbNO, nl, pl, "pt-BR": ptBR, "pt-PT": ptPT, ru, sk, tr, uk, "zh-CN": zhCN, "zh-Hant": zhHant

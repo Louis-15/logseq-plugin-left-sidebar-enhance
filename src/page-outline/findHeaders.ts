@@ -3,7 +3,7 @@ import { Child, TocBlock } from "./pageHeaders"
 
 
 /**
- * Extended TocBlock with hierarchical information
+ * 带层级信息的扩展 TocBlock
  */
 export interface HierarchicalTocBlock extends TocBlock {
   level: number  // Heading level (1-6)
@@ -12,15 +12,13 @@ export interface HierarchicalTocBlock extends TocBlock {
 }
 
 
-// md系統のバージョン用
-// ヘッダーを取得する関数
+// Markdown 模式用：从块树中提取标题
 export const getTocBlocks = (childrenArr: Child[]): TocBlock[] => {
   return findHeaders(childrenArr, (child) => isHeader(child.content, child as TocBlock, true))
 }
 
 
-// dbバージョン用
-// ヘッダーを取得する関数
+// 数据库模式用：从块树中提取标题
 export const getTocBlocksForDb = (childrenArr: Child[]): TocBlock[] => {
   return findHeaders(childrenArr, (child) => child[":logseq.property/heading"] === 1 ||
     child[":logseq.property/heading"] === 2 ||
@@ -33,8 +31,8 @@ export const getTocBlocksForDb = (childrenArr: Child[]): TocBlock[] => {
 
 
 /**
- * Get headers with hierarchical structure preserved
- * md系統のバージョン用
+ * 获取带层级结构的标题列表
+ * Markdown 模式用
  */
 export const getHierarchicalTocBlocks = (childrenArr: Child[]): HierarchicalTocBlock[] => {
   return buildHierarchicalHeaders(
@@ -46,8 +44,8 @@ export const getHierarchicalTocBlocks = (childrenArr: Child[]): HierarchicalTocB
 
 
 /**
- * Get headers with hierarchical structure preserved
- * dbバージョン用
+ * 获取带层级结构的标题列表
+ * 数据库模式用
  */
 export const getHierarchicalTocBlocksForDb = (childrenArr: Child[]): HierarchicalTocBlock[] => {
   return buildHierarchicalHeaders(
@@ -59,8 +57,7 @@ export const getHierarchicalTocBlocksForDb = (childrenArr: Child[]): Hierarchica
 
 
 /**
- * Generalized function to extract headers from a list of children.
- * Returns flat list (backward compatibility)
+ * 通用标题提取函数（返回扁平列表，兼容旧版）
  */
 const findHeaders = (childrenArr: Child[], isHeaderFn: (child: Child) => boolean): TocBlock[] => {
   let tocBlocks: TocBlock[] = []
@@ -86,8 +83,8 @@ const findHeaders = (childrenArr: Child[], isHeaderFn: (child: Child) => boolean
 
 
 /**
- * Build hierarchical header structure based on heading levels
- * This creates a proper tree where headings are nested based on their level
+ * 构建层级标题树结构
+ * 根据标题等级将标题组织成嵌套树结构
  */
 const buildHierarchicalHeaders = (
   childrenArr: Child[],
@@ -149,7 +146,7 @@ const buildHierarchicalHeaders = (
 
 
 /**
- * Flatten hierarchical headers to a simple list (for backward compatibility)
+ * 将层级标题树展平为简单列表（用于向后兼容）
  */
 export const flattenHierarchicalHeaders = (hierarchicalHeaders: HierarchicalTocBlock[]): TocBlock[] => {
   const flat: TocBlock[] = []

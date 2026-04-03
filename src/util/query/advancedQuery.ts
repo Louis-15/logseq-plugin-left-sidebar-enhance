@@ -1,6 +1,6 @@
 import { BlockEntity, PageEntity } from "@logseq/libs/dist/LSPlugin.user"
 
-// クエリを実行する共通関数
+// 执行 Datalog 查询的通用封装函数
 const advancedQuery = async <T>(query: string, ...input: Array<any>): Promise<T | null> => {
   try {
     const result = await logseq.DB.datascriptQuery(query, ...input)
@@ -50,10 +50,10 @@ export const getParentFromUuid = async (uuid: BlockEntity["uuid"]): Promise<Bloc
 }
 
 
-// MD バージョン用の関数
+// ==================== Markdown 版本专用函数 ====================
 
 export const getCurrentPageForMd = async (): Promise<{ originalName: PageEntity["originalName"], uuid: PageEntity["uuid"] } | null> => {
-  // mdバージョンの場合は original-nameが取得できる
+  // Markdown 版本可通过 original-name 获取页面原始名称
   const result = await advancedQuery<{ "original-name": PageEntity["originalName"], uuid: PageEntity["uuid"] }[]>(`
       [:find (pull ?p [:block/original-name :block/uuid])
        :in $ ?current
@@ -71,7 +71,7 @@ export const getCurrentPageForMd = async (): Promise<{ originalName: PageEntity[
 }
 
 export const getCurrentZoomForMd = async (): Promise<{ uuid: BlockEntity["uuid"], page: { originalName: PageEntity["originalName"], uuid: PageEntity["uuid"] } } | null> => {
-  // mdバージョンの場合は original-nameが取得できる
+  // Markdown 版本可通过 original-name 获取页面原始名称
   const result = await advancedQuery<{ uuid: BlockEntity["uuid"], page: { originalName: PageEntity["originalName"], uuid: PageEntity["uuid"] } }[]>(`
       [:find (pull ?b [:block/uuid {:block/page [:block/uuid :block/original-name]}])
        :in $ ?current
@@ -87,7 +87,7 @@ export const getCurrentZoomForMd = async (): Promise<{ uuid: BlockEntity["uuid"]
 
 
 
-// DB バージョン用の関数
+// ==================== 数据库版本专用函数 ====================
 
 
 export const zoomBlockWhenDb = async (uuid: BlockEntity["uuid"]): Promise<{ uuid: PageEntity["uuid"], title: string } | null> => {
@@ -106,10 +106,10 @@ export const zoomBlockWhenDb = async (uuid: BlockEntity["uuid"]): Promise<{ uuid
 }
 
 
-// :current-pageで、:block/pageが返ってくる場合はズーム中として認識する
+// 当 :current-page 返回 :block/page 时，识别为缩放模式
 export const CurrentCheckPageOrZoom = async (): Promise<{ check: "page" | "zoom", page?: { title: string, uuid: PageEntity["uuid"] } }> => {
 
-  //:current-pageで、:block/titleが存在する場合は、dbバージョンかつページを開いていると認識する
+  // 当 :current-page 返回 :block/title 时，识别为数据库模式且正在浏览页面
   const result = await advancedQuery<{ title: string, uuid: PageEntity["uuid"] }>(`
     [:find (pull ?p [:block/title :block/uuid])
      :in $ ?current
@@ -119,8 +119,8 @@ export const CurrentCheckPageOrZoom = async (): Promise<{ check: "page" | "zoom"
      [?p :block/name ?name]
      [(= ?name ?current)]]
      ` , ":current-page")
-  if (result?.[0]?.title) // titleが存在する場合はdbグラフかつページと認識する
+  if (result?.[0]?.title) // title 存在则识别为数据库图谱的页面
     return { check: "page", page: { title: result[0].title, uuid: result[0].uuid } }
-  return { check: "zoom" } // :current-pageが存在しない場合はズーム中と認識する
+  return { check: "zoom" } // :current-page 不存在时识别为缩放模式
 
 }

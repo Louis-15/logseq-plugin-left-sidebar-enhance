@@ -3,13 +3,13 @@ import { expandAndScrollToBlock } from "./collapsedBlock"
 
 
 /**
- * Clears all zoom marks from the table of contents.
+ * 清除 TOC 中所有的缩放标记
  */
 export const clearZoomMarks = () => {
   const zoomedElements = parent.document.querySelectorAll("#lse-toc-content [data-uuid]")
   zoomedElements.forEach((el) => {
     const markElement = el.querySelector(".zoom-mark") as HTMLElement | null
-    if (markElement) markElement.style.display = "none" // マークを非表示
+    if (markElement) markElement.style.display = "none" // 隐藏标记
   })
 }
 
@@ -19,7 +19,7 @@ export const updateZoomMark = (zoom: { zoomIn: boolean; zoomInUuid: BlockEntity[
     const zoomedElements = targetElement.querySelectorAll("[data-uuid]")
     zoomedElements.forEach((el) => {
       const markElement = el.querySelector(".zoom-mark") as HTMLElement | null
-      if (markElement) markElement.style.display = "none" // マークを非表示
+      if (markElement) markElement.style.display = "none" // 隐藏标记
     })
 
     if (zoom.zoomIn && zoom.zoomInUuid) {

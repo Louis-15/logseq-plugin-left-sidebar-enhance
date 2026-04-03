@@ -11,15 +11,18 @@ import { headerRightButtons, contentTopButtons, generatePageButton } from "./tog
 import { clearZoomMarks, updateZoomMark } from "./zoom"
 
 
-export const keyToolbarHeaderSpace = "lse-toc-header-space"
-export const keyToggleTableId = "thfpc--toggleHeader"
-export const keyToggleH = "tabbedHeadersToggleH"
+// DOM 元素 ID 常量
+export const keyToolbarHeaderSpace = "lse-toc-header-space" // 页面名称显示区域
+export const keyToggleTableId = "thfpc--toggleHeader"       // 标题级别切换表格
+export const keyToggleH = "tabbedHeadersToggleH"             // 标题级别切换按钮前缀
+/** TOC 块数据结构：从 Logseq 块树中提取的标题信息 */
 export interface TocBlock {
-  content: string
-  uuid: string
-  properties?: { [key: string]: string[] | string }
-  [":logseq.property/heading"]?: number
+  content: string                                          // 块原始内容
+  uuid: string                                             // 块唯一标识
+  properties?: { [key: string]: string[] | string }        // 块属性
+  [":logseq.property/heading"]?: number                     // 数据库模式下的标题等级
 }
+/** 块树子节点接口：代表页面块树中的一个节点及其子节点 */
 export interface Child {
   content: string
   uuid: string
@@ -29,45 +32,53 @@ export interface Child {
 
 
 
+/**
+ * 刷新侧边栏大纲列表的核心函数
+ * 流程：显示页面标题 → 获取块树 → 提取标题 → 过滤 → 渲染元素 → 注册监听
+ * @param pageName - 页面名称
+ * @param zoom - 可选的缩放信息
+ */
 export const refreshPageHeaders = async (pageName: string, zoom?: { zoomIn: boolean, zoomInUuid: BlockEntity["uuid"] }) => {
 
   const element = parent.document.getElementById("lse-toc-content") as HTMLDivElement | null
   if (element) {
-    // element.innerHTML = "" //elementが存在する場合は中身を削除する
 
     // 始终显示页面名称标题
     generatePageButton(element)
 
     const versionMd = booleanLogseqVersionMd()
+    // 获取当前页面的完整块树
     const blocks = await logseq.Editor.getPageBlocksTree(pageName) as Child[]
-    //ページの全ブロックからheaderがあるかどうかを確認する
+    // 从块树中提取含有标题的块
     let headers: TocBlock[]
     let versionDbMdGraphFlag = false
     if (versionMd === true)
+      // Markdown 模式：通过 # 语法检测标题
       headers = getTocBlocks(blocks)
     else {
+      // 数据库模式：优先使用数据库特有的标题属性
       const dbGraph = getTocBlocksForDb(blocks)
       if (dbGraph.length > 0)
         headers = dbGraph
       else {
+        // 回退到 Markdown 语法检测（混合模式图谱）
         headers = getTocBlocks(blocks)
         versionDbMdGraphFlag = true
       }
     }
 
+    // Markdown 模式下，仅保留包含有效标题记号（# ~ ######）的块
     if ((versionMd === true
       || versionDbMdGraphFlag === true)
       && headers.length > 0)
-      //headersのcontentに、#や##などのヘッダー記法が含まれているデータのみ処理をする
       headers = headers.filter((block) => {
         const headerLevel = getHeaderLevel(block.content)
         return headerLevel > 0 && headerLevel <= 6
       })
 
-    //フィルター後
+    // 有标题时：渲染大纲 + 异步应用编号 + 注册数据库变更监听
     if (headers.length > 0) {
-      // Perform heading-number check/update when page outline detects headers.
-      // Run asynchronously so UI rendering is not blocked.
+      // 异步应用标题编号（不阻塞 UI 渲染）
       setTimeout(() => {
         try {
           void applyHeadingNumbersToPage(pageName)
@@ -77,10 +88,11 @@ export const refreshPageHeaders = async (pageName: string, zoom?: { zoomIn: bool
       }, 50)
 
       await updateHeadingElements(element, headers as TocBlock[], pageName, versionMd, zoom ? zoom : undefined)
-      //toc更新用のイベントを登録する
+      // 首次检测到标题时，注册数据库变更监听器用于实时刷新 TOC
       if (onBlockChangedOnce === false)
         onBlockChanged()
     } else
+      // 无标题时：清空大纲区域
       clearTOC()
   }
 
@@ -88,6 +100,10 @@ export const refreshPageHeaders = async (pageName: string, zoom?: { zoomIn: bool
 
 
 
+/**
+ * 更新 TOC 容器中的标题元素
+ * 使用缓存机制避免无谓的 DOM 重绘，仅当标题内容发生变化时才重新渲染
+ */
 const updateHeadingElements = async (
   targetElement: HTMLElement,
   tocBlocks: TocBlock[],
@@ -96,39 +112,37 @@ const updateHeadingElements = async (
   zoom?: { zoomIn: boolean; zoomInUuid: BlockEntity["uuid"] }
 ): Promise<void> => {
 
-  // ズームマークのリセット
+  // 重置缩放标记
   clearZoomMarks()
 
-  // キャッシュと比較
+  // 与缓存对比，若未变化则跳过 DOM 更新
   if (isHeadersCacheEqual(tocBlocks)) {
     updateZoomMark(zoom, targetElement)
-    return // DOM更新をスキップ
+    return
   }
 
-  // キャッシュを更新
+  // 更新缓存
   setCachedHeaders(tocBlocks)
 
-  // DOMをクリア
+  // 清空现有 DOM
   targetElement.innerHTML = ""
 
-  // content top buttons
+  // 渲染顶部操作按钮（上移/下移/标题层级过滤）
   targetElement.append(contentTopButtons())
 
-  // ページコンテンツのヘッダーにカーソルを合わせた時に、CSSでヘッダーリストのUUIDが一致する、該当する項目をハイライトする
+  // 用于标题悬停高亮的动态 CSS（当前未使用，留作扩展）
   let css = ""
 
-  // Create list
+  // 遍历标题块，逐个创建并追加大纲元素
   for (const tocBlock of tocBlocks) {
     if (isHeader(tocBlock.content, tocBlock, versionMd)) {
-      // ヘッダー要素を生成
       const element = createHeaderElement(tocBlock.content, tocBlock, versionMd, thisPageName, zoom)
       targetElement.append(element)
     }
   }
 
-  // CSSを追加する処理
+  // 如果生成了动态 CSS，则以 style 标签的形式注入到 TOC 容器中
   if (css !== "") {
-    // <style>要素を作成し、#lse-toc-contentに追加する
     const styleElement = document.createElement("style")
     styleElement.innerHTML = css
     targetElement.appendChild(styleElement)
