@@ -8,7 +8,6 @@ import { settingsTemplate } from './settings'
 import { settingKeys } from './settings/keys'
 import { initSettingsDispatcher } from './settings/onSettingsChanged'
 import { removeContainer } from './util/lib'
-import { loadVisualTimer } from './visualTimer'
 import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/sethyuan/logseq-l10n
 import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
@@ -83,9 +82,6 @@ const main = async () => {
     setupTOCHandlers(logseqVersionMd)
     , 300)
 
-  //残り時間可視化ビジュアル
-  loadVisualTimer()
-
   //マウスオーバー
   loadShowByMouseOver()
 
@@ -106,7 +102,6 @@ const main = async () => {
   logseq.beforeunload(async () => {
     removeContainer("lse-toc-container")
     removeContainer("lse-dataSelector-container")
-    removeContainer("lse-visualTimer-container")
     removeToolbarIcon()
     cleanupHeadingButtons()
     parent.document.documentElement.classList.remove('lse-heading-enabled')

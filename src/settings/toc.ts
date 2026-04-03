@@ -24,13 +24,7 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
 
     if (cfg[settingKeys.toc.master] === true) {
         list.push(
-            {
-                key: settingKeys.toc.booleanAsZoomPage,
-                title: '默认以缩放视图打开页面' + '🆕',
-                type: 'boolean',
-                default: true,
-                description: '如果禁用，长按 `Ctrl` 键并点击可将其作为缩放块打开。',
-            },
+
             {
                 key: settingKeys.toc.highlightBlockOnHover,
                 title: '鼠标悬停在标题上时高亮显示数据块',
@@ -91,13 +85,6 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
             }
 
             list.push(
-                {
-                    key: settingKeys.toc.headingNumberCleanup,
-                    title: '从当前页面删除标题编号',
-                    type: 'boolean',
-                    default: false,
-                    description: '⚠️ 启用后，将从当前打开的页面中删除所有标题编号。完成后将自动重置为 false。',
-                },
                 {
                     key: settingKeys.toc.pageStateStorageMode,
                     title: '页面激活状态存储模式',

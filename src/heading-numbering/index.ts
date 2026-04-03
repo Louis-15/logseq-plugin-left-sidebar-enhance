@@ -510,11 +510,6 @@ const extractNumberFromHeading = (firstLine: string, delimiter: string): string 
 export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet: any): Promise<boolean> => {
     // display-only numbering and heading level marks removed
 
-    // Cleanup mode - remove all heading numbers
-    if (oldSet[settingKeys.toc.headingNumberCleanup] !== newSet[settingKeys.toc.headingNumberCleanup] &&
-        newSet[settingKeys.toc.headingNumberCleanup] === true) {
-        await executeCleanup()
-    }
 
     // File-update mode changes
     if (oldSet[settingKeys.toc.headingNumberFileEnable] !== newSet[settingKeys.toc.headingNumberFileEnable] ||
