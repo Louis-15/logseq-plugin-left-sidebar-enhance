@@ -77,10 +77,14 @@ const headerItemLink = (tocBlocks: TocBlock[], i: number, element: HTMLElement) 
       const headerItemElement = parent.document.querySelector(selector) as HTMLDivElement | null
       if (headerItemElement) {
         headerItemElement.addEventListener("mouseover", () => {
-          element.style.textDecoration = "underline"
+          element.style.backgroundColor = "var(--ls-block-highlight-color)"
+          element.style.color = "var(--ls-link-text-color)"
+          element.style.borderRadius = "2px"
         })
         headerItemElement.addEventListener("mouseout", () => {
-          element.style.textDecoration = "unset"
+          element.style.backgroundColor = "unset"
+          element.style.color = "unset"
+          element.style.borderRadius = "unset"
         })
       }
     }
