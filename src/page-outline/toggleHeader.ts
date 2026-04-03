@@ -146,7 +146,7 @@ export const generatePageButton = (element: HTMLElement) => {
       {
         title: currentPageOriginalName,
         class: "button",
-        style: "white-space: nowrap",
+        style: "white-space: nowrap; color: var(--ls-link-text-color);",
       },
       currentPageOriginalName
     )
