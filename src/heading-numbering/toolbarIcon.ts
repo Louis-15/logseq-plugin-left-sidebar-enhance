@@ -50,15 +50,15 @@ export const createToolbarIcon = (pageName: string) => {
         `
     })
 
-    // 开启编号图标：带编号的列表
+    // 开启编号图标：灰白线条风格的编号列表
     enableIcon.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="10" y1="6" x2="21" y2="6"/>
-            <line x1="10" y1="12" x2="21" y2="12"/>
-            <line x1="10" y1="18" x2="21" y2="18"/>
-            <text x="1" y="8" font-size="8" font-weight="bold" fill="currentColor" stroke="none">1</text>
-            <text x="1" y="14" font-size="8" font-weight="bold" fill="currentColor" stroke="none">2</text>
-            <text x="1" y="20" font-size="8" font-weight="bold" fill="currentColor" stroke="none">3</text>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <text x="1" y="7" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">1</text>
+            <line x1="9" y1="4" x2="21" y2="4" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+            <text x="1" y="15" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">2</text>
+            <line x1="9" y1="12" x2="21" y2="12" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+            <text x="1" y="23" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">3</text>
+            <line x1="9" y1="20" x2="21" y2="20" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
         </svg>
     `
 
@@ -98,15 +98,17 @@ export const createToolbarIcon = (pageName: string) => {
         `
     })
 
-    // 清除编号图标：带叉号的列表
+    // 清除编号图标：编号列表 + 红色×叠在上方偏右
     cleanupIcon.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="10" y1="6" x2="21" y2="6"/>
-            <line x1="10" y1="12" x2="21" y2="12"/>
-            <line x1="10" y1="18" x2="21" y2="18"/>
-            <line x1="1" y1="6" x2="7" y2="12" stroke="red" stroke-width="2.5"/>
-            <line x1="7" y1="6" x2="1" y2="12" stroke="red" stroke-width="2.5"/>
-            <text x="1" y="20" font-size="8" font-weight="bold" fill="currentColor" stroke="none">×</text>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <text x="1" y="7" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">1</text>
+            <line x1="9" y1="4" x2="21" y2="4" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+            <text x="1" y="15" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">2</text>
+            <line x1="9" y1="12" x2="21" y2="12" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+            <text x="1" y="23" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">3</text>
+            <line x1="9" y1="20" x2="21" y2="20" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
+            <line x1="13" y1="6" x2="21" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="21" y1="6" x2="13" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
     `
 

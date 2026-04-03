@@ -262,8 +262,8 @@ const handleLock = async (blockUuid: string) => {
 
 /**
  * 处理"重号"按钮点击
- * - 如果此时已经是 lock，则视为取消重复（解除锁定），重新自动编号
- * - 如果不是，复制上一个同级标题的编号 → 写入当前标题 → 自动锁定
+ * - 已标记为 repeat → 取消重复，恢复自动编号
+ * - 未标记 → 设置 repeat 状态，编号算法会自动动态跟随前一个同级兄弟的编号
  */
 const handleRepeat = async (blockUuid: string) => {
     const block = await logseq.Editor.getBlock(blockUuid)
@@ -273,51 +273,15 @@ const handleRepeat = async (blockUuid: string) => {
     }
 
     const current = getBlockHeadingState(blockUuid)
-    if (current === 'repeat' || current === 'lock') {
+    if (current === 'repeat') {
         setBlockHeadingState(blockUuid, null)
-        logseq.UI.showMsg('已取消重复编号并解锁', 'info', { timeout: 1500 })
-        await cleanupBlockProperty(blockUuid)
-        await retriggerNumbering()
-        return
+        logseq.UI.showMsg('已取消重复编号', 'info', { timeout: 1500 })
+    } else {
+        // 仅设置状态标记，编号算法会在 retriggerNumbering 中自动处理
+        setBlockHeadingState(blockUuid, 'repeat')
+        logseq.UI.showMsg('已设为重复编号（动态跟随前一个标题）', 'success', { timeout: 2000 })
     }
-
-    const page = await logseq.Editor.getCurrentPage()
-    if (!page) return
-    const pageName = (page.originalName || page.name || '') as string
-    if (!pageName) return
-
-    const pageBlocks = await logseq.Editor.getPageBlocksTree(pageName)
-    if (!pageBlocks) return
-
-    const prevNumber = findPrevSiblingNumber(pageBlocks, blockUuid)
-    if (!prevNumber) {
-        logseq.UI.showMsg('未找到上一个同级标题的编号，无法重号', 'warning', { timeout: 3000 })
-        return
-    }
-
-    // 读取当前块内容，替换编号
-    const content = block.content || ''
-    const lines = content.split(/\r?\n/)
-    const firstLine = lines[0] || ''
-    const hashMatch = firstLine.match(/^(#{1,6})\s+/)
-    if (!hashMatch) return
-
-    const hashTags = hashMatch[1]
-    let textOnly = firstLine.replace(/^#{1,6}\s+/, '').replace(/^[\d.]+\s+/, '')
-
-    const newFirstLine = `${hashTags} ${prevNumber} ${textOnly}`
-    const newContent = [newFirstLine, ...lines.slice(1)].join('\n')
-
-    // 【关键】先写入状态，再修改块内容
-    // 因为 updateBlock 会触发 Logseq 的 onChanged 回调，
-    // 回调中会自动重新计算编号。如果状态还没写入，
-    // 编号算法就不知道这个块是 'repeat'，会用顺延的数字覆盖掉。
-    setBlockHeadingState(blockUuid, 'repeat')
-
-    await logseq.Editor.updateBlock(blockUuid, newContent)
     await cleanupBlockProperty(blockUuid)
-
-    logseq.UI.showMsg(`已重复编号 ${prevNumber} 并锁定`, 'success', { timeout: 2000 })
     await retriggerNumbering()
 }
 

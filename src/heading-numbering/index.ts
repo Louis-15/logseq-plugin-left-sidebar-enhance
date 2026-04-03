@@ -278,8 +278,8 @@ const updateHierarchicalBlocks = async (
                 continue
             }
 
-            // 2. 锁定检测（lock 和 repeat 等同处理）
-            if (headingNumProp === 'lock' || headingNumProp === 'repeat') {
+            // 2. 锁定检测（仅 lock）
+            if (headingNumProp === 'lock') {
                 // 不修改标题文本，但提取其编号供后续兄弟参考
                 const fullContent = node.content || ''
                 const lines = fullContent.split(/\r?\n/)
@@ -298,8 +298,73 @@ const updateHierarchicalBlocks = async (
 
                 // 递归处理锁定标题的子标题
                 if (node.children && node.children.length > 0) {
-                    // 子标题的父编号 = 当前锁定标题的完整编号
                     const currentFullNumber = extractedNumber || (parentNumberStr ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}` : `${lastSiblingNumber}`)
+                    await processSiblings(node.children, currentFullNumber)
+                }
+                continue
+            }
+
+            // 2.5 重复检测（repeat）：动态跟随上一个同级兄弟的编号
+            // 不递增 lastSiblingNumber，直接使用上一个兄弟的编号来更新文本
+            if (headingNumProp === 'repeat') {
+                // 如果还没有上一个兄弟（是第一个标题），用 1
+                const repeatNumber = lastSiblingNumber > 0 ? lastSiblingNumber : 1
+
+                // 构建完整编号（与上一个兄弟相同）
+                const currentFullNumber = parentNumberStr
+                    ? `${parentNumberStr}${newDelimiter}${repeatNumber}`
+                    : `${repeatNumber}`
+
+                // 像普通标题一样处理文本更新
+                const fullContent = node.content || ''
+                const lines = fullContent.split(/\r?\n/)
+                const firstLine = lines.length > 0 ? lines[0] : ''
+
+                let { number: oldNumber, textWithoutNumber } = extractOldNumber(firstLine, oldDelimiter)
+                if (!oldNumber) {
+                    const mm = firstLine.match(MULTI_NUMBER_PATTERN)
+                    if (mm) {
+                        const hashTags = mm[1]
+                        const restText = mm[2]
+                        const numPartMatch = firstLine.match(new RegExp(`^${escapeForRegex(hashTags)}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
+                        const numPart = numPartMatch ? numPartMatch[1].trim() : null
+                        if (numPart) {
+                            oldNumber = numPart
+                            textWithoutNumber = `${hashTags} ${restText}`
+                        }
+                    }
+                    if (!oldNumber) {
+                        const gen = extractGeneralNumber(firstLine)
+                        if (gen) {
+                            oldNumber = gen
+                            textWithoutNumber = firstLine.replace(new RegExp(`^(#{1,6})\\s+${escapeForRegex(gen)}\\s+`), '$1 ')
+                        }
+                    }
+                }
+
+                const normalizedExpected = normalizeNumberString(currentFullNumber, newDelimiter)
+                const normalizedOld = oldNumber ? normalizeNumberString(oldNumber, newDelimiter) : null
+
+                if (!oldNumber || normalizedOld !== normalizedExpected) {
+                    const textOnly = textWithoutNumber.replace(HEADING_HASHES_GENERIC, '')
+                    if (textOnly.trim()) {
+                        const hashTags = '#'.repeat(level)
+                        const newFirstLine = `${hashTags} ${currentFullNumber} ${textOnly}`
+                        const newFullContent = [newFirstLine, ...lines.slice(1)].join('\n')
+                        if (newFullContent !== fullContent) {
+                            try {
+                                await logseq.Editor.updateBlock(node.uuid, newFullContent)
+                                node.content = newFullContent
+                            } catch (error) {
+                                console.error(`更新重复编号块 ${node.uuid} 失败:`, error)
+                            }
+                        }
+                    }
+                }
+
+                // 注意：不递增 lastSiblingNumber，保持不变
+                // 递归处理子标题
+                if (node.children && node.children.length > 0) {
                     await processSiblings(node.children, currentFullNumber)
                 }
                 continue
