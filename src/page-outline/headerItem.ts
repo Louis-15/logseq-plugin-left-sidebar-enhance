@@ -76,16 +76,7 @@ const headerItemLink = (tocBlocks: TocBlock[], i: number, element: HTMLElement) 
     if (logseq.settings?.[settingKeys.toc.highlightHeaderOnHover] === true) {
       const headerItemElement = parent.document.querySelector(selector) as HTMLDivElement | null
       if (headerItemElement) {
-        headerItemElement.addEventListener("mouseover", () => {
-          element.style.backgroundColor = "var(--ls-block-highlight-color)"
-          element.style.color = "var(--ls-link-text-color)"
-          element.style.borderRadius = "2px"
-        })
-        headerItemElement.addEventListener("mouseout", () => {
-          element.style.backgroundColor = "unset"
-          element.style.color = "unset"
-          element.style.borderRadius = "unset"
-        })
+        // 功能被用户废除，改采用由 focusin 全局监听管理的光标捕获高亮方案
       }
     }
   }

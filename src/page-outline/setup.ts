@@ -50,6 +50,42 @@ export const setupTOCHandlers = (versionMd: boolean) => {
     //ヘッダー挿入コマンド
     headerCommand()
 
+    // 注册全局光标焦点事件，用于长亮侧边栏对应的目录节点
+    if (!(parent.document as any)._lseFocusListenerAttached) {
+        parent.document.addEventListener('focusin', (e) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName !== 'TEXTAREA') return;
+
+            // 清理旧的高亮
+            const oldActive = parent.document.querySelectorAll('#lse-toc-content .active-heading');
+            oldActive.forEach((el) => {
+                el.classList.remove('active-heading');
+                (el as HTMLElement).style.backgroundColor = 'unset';
+                (el as HTMLElement).style.color = 'unset';
+                (el as HTMLElement).style.borderRadius = 'unset';
+            });
+
+            // 寻找包含这个编辑框的向上追溯的最近含有大纲映射的 ls-block
+            let current: HTMLElement | null = target.closest('.ls-block');
+            while (current) {
+                const blockid = current.getAttribute('blockid');
+                if (blockid) {
+                    const selector = `#lse-toc-content [data-uuid="${blockid}"]`;
+                    const tocItem = parent.document.querySelector(selector) as HTMLElement | null;
+                    if (tocItem) {
+                        tocItem.classList.add('active-heading');
+                        tocItem.style.backgroundColor = 'var(--ls-block-highlight-color)';
+                        tocItem.style.color = 'var(--ls-link-text-color)';
+                        tocItem.style.borderRadius = '2px';
+                        break;
+                    }
+                }
+                current = current.parentElement?.closest('.ls-block') || null;
+            }
+        });
+        (parent.document as any)._lseFocusListenerAttached = true;
+    }
+
 }
 
 /**
