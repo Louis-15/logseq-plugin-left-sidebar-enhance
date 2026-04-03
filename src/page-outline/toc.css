@@ -1,7 +1,29 @@
 #lse-toc-container>details>summary {
     font-size: .9em;
-    cursor: row-resize;
+    cursor: default;
     background-color: var(--ls-tertiary-background-color);
+    list-style: none;
+    text-align: left;
+}
+
+/* 隐藏浏览器原生三角 */
+#lse-toc-container>details>summary::-webkit-details-marker {
+    display: none;
+}
+
+/* 自定义展开/收起三角 */
+#lse-toc-container>details>summary::before {
+    content: "▶";
+    font-size: 0.6em;
+    margin-right: 0.5em;
+    margin-left: 0.3em;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    opacity: 0.6;
+}
+
+#lse-toc-container>details[open]>summary::before {
+    content: "▼";
 }
 
 #lse-toc-inner {
@@ -43,9 +65,7 @@
         & h1,
         & h2,
         & h3,
-        & h4,
-        & h5,
-        & h6 {
+        & h4 {
             height: 2.2em;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -91,9 +111,7 @@
 
         & h2,
         & h3,
-        & h4,
-        & h5,
-        & h6 {
+        & h4 {
             margin-top: .5em;
             /*  display: list-item;
                 list-style-type: disc;
@@ -113,22 +131,6 @@
 
             &::before {
                 content: "h4";
-            }
-        }
-
-        & h5 {
-            padding-left: 2.8em;
-
-            &::before {
-                content: "h5";
-            }
-        }
-
-        & h6 {
-            padding-left: 3.6em;
-
-            &::before {
-                content: "h6";
             }
         }
     }

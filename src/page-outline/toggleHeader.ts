@@ -88,7 +88,7 @@ export const additionalButtons = (thisPageName: string) => {
   })
   const tableRow = document.createElement("tr")
 
-  for (let level = 1; level <= 6; level++) {
+  for (let level = 1; level <= 4; level++) {
     const th = document.createElement("th")
     const button = createElementWithAttributes(
       "button",

@@ -94,6 +94,7 @@ const renderTOCContainer = () => {
         const summaryEle = createElementWithAttributes("summary", {
             class: "header items-center",
             title: "Left Sidebar Enhance " + t("plugin"),
+            style: "text-align: left; cursor: default;",
         })
         summaryEle.innerText = t("Page Outline")
         const containerEle = createElementWithAttributes("div", {

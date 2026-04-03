@@ -264,6 +264,9 @@ const updateHierarchicalBlocks = async (
         for (const node of siblings) {
             const level = node.level || 1
 
+            // 跳过 5 级及以上标题，不参与编号
+            if (level > 4) continue
+
             // 从插件设置读取编号状态（而非 block properties）
             const headingNumProp = getBlockHeadingState(node.uuid)
 
@@ -311,16 +314,33 @@ const updateHierarchicalBlocks = async (
                 const repeatNumber = lastSiblingNumber > 0 ? lastSiblingNumber : 1
 
                 // 构建完整编号（与上一个兄弟相同）
-                const currentFullNumber = parentNumberStr
-                    ? `${parentNumberStr}${newDelimiter}${repeatNumber}`
-                    : `${repeatNumber}`
+                // H4 特殊格式：仅用序号+顿号，不带父级前缀
+                const currentFullNumber = level === 4
+                    ? `${repeatNumber}`
+                    : (parentNumberStr
+                        ? `${parentNumberStr}${newDelimiter}${repeatNumber}`
+                        : `${repeatNumber}`)
 
                 // 像普通标题一样处理文本更新
                 const fullContent = node.content || ''
                 const lines = fullContent.split(/\r?\n/)
                 const firstLine = lines.length > 0 ? lines[0] : ''
 
-                let { number: oldNumber, textWithoutNumber } = extractOldNumber(firstLine, oldDelimiter)
+                // H4 专用：先尝试匹配 n、标题 格式
+                let oldNumber: string | null = null
+                let textWithoutNumber: string = firstLine
+                if (level === 4) {
+                    const h4Match = firstLine.match(/^(#{4})\s+(\d+)、(.+)$/)
+                    if (h4Match) {
+                        oldNumber = h4Match[2]
+                        textWithoutNumber = `${h4Match[1]} ${h4Match[3]}`
+                    }
+                }
+                if (!oldNumber) {
+                    const extracted = extractOldNumber(firstLine, oldDelimiter)
+                    oldNumber = extracted.number
+                    textWithoutNumber = extracted.textWithoutNumber
+                }
                 if (!oldNumber) {
                     const mm = firstLine.match(MULTI_NUMBER_PATTERN)
                     if (mm) {
@@ -349,7 +369,10 @@ const updateHierarchicalBlocks = async (
                     const textOnly = textWithoutNumber.replace(HEADING_HASHES_GENERIC, '')
                     if (textOnly.trim()) {
                         const hashTags = '#'.repeat(level)
-                        const newFirstLine = `${hashTags} ${currentFullNumber} ${textOnly}`
+                        // H4 特殊格式：n、标题（无空格）
+                        const newFirstLine = level === 4
+                            ? `${hashTags} ${currentFullNumber}、${textOnly.trim()}`
+                            : `${hashTags} ${currentFullNumber} ${textOnly}`
                         const newFullContent = [newFirstLine, ...lines.slice(1)].join('\n')
                         if (newFullContent !== fullContent) {
                             try {
@@ -375,9 +398,12 @@ const updateHierarchicalBlocks = async (
             lastSiblingNumber += 1
 
             // 构建完整编号
-            const currentFullNumber = parentNumberStr
-                ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}`
-                : `${lastSiblingNumber}`
+            // H4 特殊格式：仅用序号，不带父级前缀
+            const currentFullNumber = level === 4
+                ? `${lastSiblingNumber}`
+                : (parentNumberStr
+                    ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}`
+                    : `${lastSiblingNumber}`)
 
             // 处理标题文本
             const fullContent = node.content || ''
@@ -385,7 +411,22 @@ const updateHierarchicalBlocks = async (
             const firstLine = lines.length > 0 ? lines[0] : ''
 
             // 提取旧编号（如果有）
-            let { number: oldNumber, textWithoutNumber } = extractOldNumber(firstLine, oldDelimiter)
+            // H4 专用：先尝试匹配 n、标题 格式（顿号分隔、无空格）
+            let oldNumber: string | null = null
+            let textWithoutNumber: string = firstLine
+            if (level === 4) {
+                const h4Match = firstLine.match(/^(#{4})\s+(\d+)、(.+)$/)
+                if (h4Match) {
+                    oldNumber = h4Match[2]
+                    textWithoutNumber = `${h4Match[1]} ${h4Match[3]}`
+                }
+            }
+            // 通用提取（H1-H3 或 H4 顿号匹配失败时回退）
+            if (!oldNumber) {
+                const extracted = extractOldNumber(firstLine, oldDelimiter)
+                oldNumber = extracted.number
+                textWithoutNumber = extracted.textWithoutNumber
+            }
 
             // 如果分隔符提取失败，尝试通用提取
             if (!oldNumber) {
@@ -426,7 +467,10 @@ const updateHierarchicalBlocks = async (
                 const textOnly = textWithoutNumber.replace(HEADING_HASHES_GENERIC, '')
                 if (textOnly.trim()) {
                     const hashTags = '#'.repeat(level)
-                    const newFirstLine = `${hashTags} ${currentFullNumber} ${textOnly}`
+                    // H4 特殊格式：n、标题（无空格）
+                    const newFirstLine = level === 4
+                        ? `${hashTags} ${currentFullNumber}、${textOnly.trim()}`
+                        : `${hashTags} ${currentFullNumber} ${textOnly}`
                     const newFullContent = [newFirstLine, ...lines.slice(1)].join('\n')
                     if (newFullContent !== fullContent) {
                         try {
