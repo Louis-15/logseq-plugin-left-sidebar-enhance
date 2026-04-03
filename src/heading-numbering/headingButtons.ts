@@ -14,32 +14,16 @@ const INDICATOR_CLASS = 'lse-heading-indicator'
  * 初始化标题右键菜单功能与指示器
  */
 export const initHeadingButtons = () => {
-    // 隐藏残留的 block properties 显示
+    // 隐藏残留的 block properties 显示（这个在 iframe 内生效即可）
     logseq.provideStyle(`
         .block-properties [data-ref="heading-num"],
         .block-properties .property-pair:has([data-ref="heading-num"]) {
             display: none !important;
         }
-
-        /* 状态指示器样式 */
-        .lse-heading-indicator {
-            position: absolute;
-            left: -48px; /* 位置往左一点，防止盖住折叠小三角和小圆点 */
-            top: 5px;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            pointer-events: none; /* 纯展示，不阻挡点击 */
-            z-index: 10;
-        }
-        .block-content-wrapper:hover > .lse-heading-indicator {
-            opacity: 1;
-        }
-        .lse-heading-indicator svg {
-            width: 14px;
-            height: 14px;
-            color: var(--ls-icon-color, #9ca3af);
-        }
     `)
+
+    // 指示器样式必须注入到 parent.document（主页面），因为指示器 DOM 在那里
+    injectIndicatorStyles()
 
     // 注入菜单项 1
     logseq.Editor.registerBlockContextMenuItem('跳过/恢复自动编号', async (e) => {
@@ -66,10 +50,69 @@ export const initHeadingButtons = () => {
 
 // ==================== 状态指示器逻辑 ====================
 
+/**
+ * 将指示器样式注入到 parent.document.head（主页面）
+ * 因为 logseq.provideStyle 只在插件 iframe 中生效
+ */
+const injectIndicatorStyles = () => {
+    const doc = parent.document
+    if (doc.getElementById('lse-indicator-styles')) return
+
+    const style = doc.createElement('style')
+    style.id = 'lse-indicator-styles'
+    style.textContent = `
+        .lse-indicator-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .lse-heading-indicator {
+            position: absolute;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .lse-heading-indicator svg {
+            width: 14px;
+            height: 14px;
+            color: var(--ls-icon-color, #9ca3af);
+        }
+    `
+    doc.head.appendChild(style)
+}
+
 const ICONS = {
     skip: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg>`,
     lock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     repeat: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-repeat"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`
+}
+
+/**
+ * 获取或创建指示器层容器（在 parent.document 中）
+ */
+const getOrCreateIndicatorLayer = (): HTMLElement | null => {
+    const doc = parent.document
+    const container = doc.getElementById('main-content-container')
+    if (!container) return null
+
+    // 确保 container 有 position 参考点
+    const style = parent.window.getComputedStyle(container)
+    if (style.position === 'static') {
+        container.style.position = 'relative'
+    }
+
+    let layer = container.querySelector('.lse-indicator-layer') as HTMLElement
+    if (!layer) {
+        layer = doc.createElement('div')
+        layer.className = 'lse-indicator-layer'
+        container.appendChild(layer)
+    }
+    return layer
 }
 
 const scanAndInjectIndicators = () => {
@@ -77,42 +120,88 @@ const scanAndInjectIndicators = () => {
         const container = parent.document.getElementById('main-content-container')
         if (!container) return
 
+        const layer = getOrCreateIndicatorLayer()
+        if (!layer) return
+
+        const containerRect = container.getBoundingClientRect()
+        const containerScrollTop = container.scrollTop
+
         const blocks = container.querySelectorAll('.ls-block[blockid]')
+
+        // 收集当前需要显示的 blockUuid 集合
+        const activeUuids = new Set<string>()
+
+        // 找到第一个顶层块的 bullet 来确定固定的 x 位置
+        // 所有指示器都放在这个 x 位置的左侧，形成统一的竖条
+        let fixedLeftX: number | null = null
+        const firstTopBlock = container.querySelector('.ls-block[blockid] .bullet-container') as HTMLElement
+            || container.querySelector('.ls-block[blockid] .bullet') as HTMLElement
+        if (firstTopBlock) {
+            const firstBulletRect = firstTopBlock.getBoundingClientRect()
+            // 固定在最顶层 bullet 中心点再往左偏移 40px（保证不挡住一级标题的折叠三角和圆点）
+            fixedLeftX = firstBulletRect.left + firstBulletRect.width / 2 - containerRect.left - 40
+        }
+        if (fixedLeftX === null) return
 
         blocks.forEach(blockEl => {
             const block = blockEl as HTMLElement
             const uuid = block.getAttribute('blockid')
             if (!uuid) return
 
-            const wrapper = block.querySelector(':scope > div > .block-content-wrapper') as HTMLElement
-                || block.querySelector(':scope > .block-content-wrapper') as HTMLElement
-            if (!wrapper) return
-
-            const blockContent = wrapper.querySelector('.block-content') as HTMLElement
-            if (!blockContent) return
-
-            // 无论是编辑态还是渲染态，我们只需要根据 uuid 读取插件配置状态
             const state = getBlockHeadingState(uuid) as 'skip' | 'lock' | 'repeat' | null
+            if (!state || !['skip', 'lock', 'repeat'].includes(state)) return
 
-            let indicatorContainer = wrapper.querySelector(`.${INDICATOR_CLASS}`)
+            activeUuids.add(uuid)
 
-            if (state && ['skip', 'lock', 'repeat'].includes(state)) {
-                // 如果当前处于这三种状态之一，则需要显示对应的指示器
-                const iconSvg = ICONS[state]
-                if (!indicatorContainer) {
-                    indicatorContainer = document.createElement('div')
-                    indicatorContainer.className = INDICATOR_CLASS
-                    wrapper.appendChild(indicatorContainer)
-                }
-                // 仅当图标变化时才更新 innerHTML 防止重复渲染引发闪烁
-                if (indicatorContainer.innerHTML !== iconSvg) {
-                    indicatorContainer.innerHTML = iconSvg
-                }
+            // 找到 bullet 小圆点用于垂直对齐
+            const bullet = block.querySelector('.bullet-container') as HTMLElement
+                || block.querySelector('.bullet') as HTMLElement
+            if (!bullet) return
+
+            const bulletRect = bullet.getBoundingClientRect()
+            const bulletCenterY = bulletRect.top + bulletRect.height / 2
+
+            const indicatorSize = 14
+            // 水平：所有层级统一使用固定 x 坐标（不再跟随各自 bullet 的缩进）
+            const indicatorLeft = fixedLeftX - indicatorSize / 2
+            // 垂直：与当前块的 bullet 中心对齐
+            const indicatorTop = bulletCenterY - containerRect.top + containerScrollTop - indicatorSize / 2
+
+            const indicatorId = `lse-ind-${uuid}`
+            let indicator = parent.document.getElementById(indicatorId) as HTMLElement | null
+
+            const iconSvg = ICONS[state]
+
+            if (!indicator) {
+                indicator = parent.document.createElement('div')
+                indicator.id = indicatorId
+                indicator.className = INDICATOR_CLASS
+                indicator.innerHTML = iconSvg
+                layer.appendChild(indicator)
             } else {
-                // 如果状态被取消，则移除指示器
-                if (indicatorContainer) {
-                    indicatorContainer.remove()
+                if (indicator.innerHTML !== iconSvg) {
+                    indicator.innerHTML = iconSvg
                 }
+            }
+
+            // 设置精确位置
+            indicator.style.left = `${indicatorLeft}px`
+            indicator.style.top = `${indicatorTop}px`
+            indicator.style.width = `${indicatorSize}px`
+            indicator.style.height = `${indicatorSize}px`
+
+            // 常驻显示，不再需要悬停触发
+            indicator.style.opacity = '0.7'
+        })
+
+        // 清理已不存在的指示器
+        const allIndicators = layer.querySelectorAll(`.${INDICATOR_CLASS}`)
+        allIndicators.forEach(ind => {
+            const id = ind.id
+            if (!id.startsWith('lse-ind-')) return
+            const uuid = id.replace('lse-ind-', '')
+            if (!activeUuids.has(uuid)) {
+                ind.remove()
             }
         })
     } catch (e) {
