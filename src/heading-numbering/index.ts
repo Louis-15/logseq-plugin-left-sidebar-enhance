@@ -127,7 +127,9 @@ export const togglePageState = async (pageName: string): Promise<{ newState: boo
             pageStates[pageName] = true
         } else {
             delete pageStates[pageName]
-            await executeCleanup()
+            const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
+            const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
+            await cleanupPageHeadingNumbers(pageName, oldDelimiter)
         }
     } else {
         // storeFalseOnly
@@ -135,7 +137,9 @@ export const togglePageState = async (pageName: string): Promise<{ newState: boo
             delete pageStates[pageName]
         } else {
             pageStates[pageName] = false
-            await executeCleanup()
+            const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
+            const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
+            await cleanupPageHeadingNumbers(pageName, oldDelimiter)
         }
     }
     logseq.updateSettings({
@@ -530,79 +534,6 @@ export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet:
 }
 
 /**
- * Execute cleanup - remove all heading numbers from the current page
- */
-const executeCleanup = async (): Promise<void> => {
-    try {
-        // Get the currently open page
-        const currentPage = await logseq.Editor.getCurrentPage()
-        if (!currentPage) {
-            await logseq.UI.showMsg('⚠️ Please open a page to clean up heading numbers', 'warning')
-            await resetCleanupFlag()
-            return
-        }
-
-        const currentPageName = currentPage.originalName || currentPage.name
-        if (typeof currentPageName !== 'string' || !currentPageName) {
-            await logseq.UI.showMsg('⚠️ Could not determine current page name', 'warning')
-            await resetCleanupFlag()
-            return
-        }
-
-        const pageName = currentPageName
-
-        // Show user message
-        await logseq.UI.showMsg(
-            `⚠️ Starting cleanup: Removing heading numbers from "${pageName}"...`,
-            'warning',
-            { timeout: 3000 }
-        )
-
-        console.log(`Starting heading number cleanup for page: ${pageName}`)
-
-        // Get delimiter settings to detect existing numbers
-        const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
-        const oldDelimiter: string = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
-
-        // Clean the current page
-        const totalCleaned = await cleanupPageHeadingNumbers(pageName, oldDelimiter)
-
-        // Show completion message
-        if (totalCleaned > 0) {
-            await logseq.UI.showMsg(
-                `✓ Cleanup complete! Removed ${totalCleaned} heading number(s) from "${pageName}".`,
-                'success',
-                { timeout: 5000 }
-            )
-            console.log(`Cleanup complete: ${totalCleaned} numbers removed from "${pageName}"`)
-        } else {
-            await logseq.UI.showMsg(
-                `No heading numbers found to clean on "${pageName}".`,
-                'info',
-                { timeout: 3000 }
-            )
-            console.log(`No heading numbers found on "${pageName}"`)
-        }
-
-    } catch (error) {
-        console.error('Error during cleanup:', error)
-        await logseq.UI.showMsg(`Error during cleanup: ${error}`, 'error')
-    } finally {
-        // Always reset the cleanup flag
-        await resetCleanupFlag()
-    }
-}
-
-/**
- * Reset the cleanup flag to false
- */
-const resetCleanupFlag = async (): Promise<void> => {
-    logseq.updateSettings({
-        [settingKeys.toc.headingNumberCleanup]: false
-    })
-}
-
-/**
  * Clean up heading numbers from a single page
  * Returns the number of blocks cleaned
  */
@@ -641,9 +572,16 @@ export const cleanupPageHeadingNumbers = async (pageName: string, oldDelimiter: 
                 const state = getBlockHeadingState(header.uuid)
                 const isLockedOrRepeat = state === 'lock' || state === 'repeat'
 
+                // H4 专用匹配
+                const h4Match = header.level === 4 ? firstLine.match(/^(#{4})\s+(\d+)、\s*(.+)$/) : null
+
                 if (isLockedOrRepeat) {
                     // 处于 lock 或 repeat 状态的标题不进行清理
                     shouldClean = false
+                } else if (h4Match) {
+                    shouldClean = true
+                    hashTags = h4Match[1]
+                    cleanedText = h4Match[3].trim()
                 } else if (oldNumber) {
                     // Has a number detected by delimiter pattern
                     shouldClean = true
