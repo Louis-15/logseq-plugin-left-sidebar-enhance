@@ -358,6 +358,14 @@ const updateHierarchicalBlocks = async (
                         }
                     }
                     if (!oldNumber) {
+                        const h4FallbackMatch = firstLine.match(/^(#{1,6})\s+(\d+)、(.+)$/)
+                        if (h4FallbackMatch) {
+                            oldNumber = h4FallbackMatch[2]
+                            textWithoutNumber = `${h4FallbackMatch[1]} ${h4FallbackMatch[3]}`
+                        }
+                    }
+                    // 回退匹配：处理从 H4 改为其他级别时残留的"n、"顿号格式
+                    if (!oldNumber) {
                         const gen = extractGeneralNumber(firstLine)
                         if (gen) {
                             oldNumber = gen
@@ -446,6 +454,14 @@ const updateHierarchicalBlocks = async (
                     }
                 }
                 if (!oldNumber) {
+                    const h4FallbackMatch = firstLine.match(/^(#{1,6})\s+(\d+)、(.+)$/)
+                    if (h4FallbackMatch) {
+                        oldNumber = h4FallbackMatch[2]
+                        textWithoutNumber = `${h4FallbackMatch[1]} ${h4FallbackMatch[3]}`
+                    }
+                }
+                // 回退匹配：处理从 H4 改为其他级别时残留的"n、"顿号格式
+            if (!oldNumber) {
                     const gen = extractGeneralNumber(firstLine)
                     if (gen) {
                         oldNumber = gen
