@@ -18,6 +18,11 @@ export const whenOpenJournals = (journalsEle: HTMLDivElement, versionMd: boolean
     if (element && journalsEle) {
         clearCachedHeaders()
         element.innerHTML = ""
+
+        // 清除原生大纲可能遗留的顶部“页面名称”标题组（例如从“试验1”切到日志页时，保留了“试验1”的挂载节点）
+        const headerSpace = parent.document.getElementById("lse-toc-header-space")
+        if (headerSpace) headerSpace.replaceChildren()
+
         getJournalTitles(journalsEle, element, versionMd)
         return
     }
