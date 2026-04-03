@@ -96,7 +96,7 @@ const renderTOCContainer = () => {
             class: "header items-center",
             title: "Left Sidebar Enhance " + t("plugin"),
         })
-        summaryEle.innerText = t("Page Outline")
+        summaryEle.innerText = "页面标题列表"
 
         const buttons = headerRightButtons()
         buttons.style.position = 'absolute'
