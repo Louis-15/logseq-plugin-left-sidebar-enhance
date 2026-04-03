@@ -31,13 +31,13 @@ const toggleHeaderVisibility = (headerName: string) => {
 }
 
 
-export const additionalButtons = (thisPageName: string) => {
+export const headerRightButtons = (thisPageName: string) => {
   const elementButtons = createElementWithAttributes("div", {
-    id: "lse-toc-buttons",
+    id: "lse-toc-header-buttons",
     class: "flex items-center",
   })
 
-  // Settings button (like Visual Timer)
+  // Settings button
   const elementSettings = createElementWithAttributes("span", { 
     class: "cursor", 
     title: "Settings",
@@ -54,6 +54,7 @@ export const additionalButtons = (thisPageName: string) => {
   })
   elementButtons.append(elementSettings)
 
+  // Update button
   const elementUpdate = createElementWithAttributes("span", { class: "cursor", title: t("Update the header list") }, "🔄")
   elementUpdate.addEventListener("click", () => {
     elementUpdate.style.visibility = "hidden"
@@ -62,6 +63,15 @@ export const additionalButtons = (thisPageName: string) => {
     refreshPageHeaders(thisPageName)
   })
   elementButtons.append(elementUpdate)
+
+  return elementButtons
+}
+
+export const contentTopButtons = () => {
+  const elementButtons = createElementWithAttributes("div", {
+    id: "lse-toc-buttons",
+    class: "flex items-center",
+  })
 
   const elementTop = createElementWithAttributes("span", { class: "cursor", title: t("Scroll to top") }, "↑")
   elementTop.addEventListener("click", () => {
