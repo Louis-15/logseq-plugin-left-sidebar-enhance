@@ -8,6 +8,7 @@ import { refreshPageHeaders } from "./pageHeaders"
 import { routeCheck } from "./routeCheck"
 import tocCSS from "./toc.css?inline"
 import { settingKeys } from '../settings/keys'
+import { headerRightButtons } from "./toggleHeader"
 
 
 // プラグイン起動後、5秒間はロックをかける
@@ -39,7 +40,7 @@ export const setupTOCHandlers = (versionMd: boolean) => {
     //プラグイン起動時
     setTimeout(() => {
         routeCheck(versionMd)
-    }, 200)
+    }, 800)
 
     //ページ読み込み時に実行コールバック
     logseq.App.onRouteChanged(async () => {
@@ -96,6 +97,15 @@ const renderTOCContainer = () => {
             title: "Left Sidebar Enhance " + t("plugin"),
         })
         summaryEle.innerText = t("Page Outline")
+
+        const buttons = headerRightButtons()
+        buttons.style.position = 'absolute'
+        buttons.style.right = '10px'
+        ;(summaryEle as HTMLElement).style.position = 'relative'
+        ;(summaryEle as HTMLElement).style.display = 'flex'
+        ;(summaryEle as HTMLElement).style.alignItems = 'center'
+        summaryEle.append(buttons)
+
         const containerEle = createElementWithAttributes("div", {
             class: "bd",
             id: "lse-toc-inner",

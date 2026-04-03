@@ -1,7 +1,7 @@
 import { t } from "logseq-l10n"
 import { createElementWithAttributes } from "../util/domUtils"
 import { refreshPageHeaders, keyToggleTableId, keyToggleH, keyToolbarHeaderSpace } from "./pageHeaders"
-import { getCurrentPageOriginalName } from ".."
+import { getCurrentPageOriginalName, booleanLogseqVersionMd } from ".."
 import { pageOpen } from "../util/lib"
 import { clearCachedHeaders } from "./cache"
 
@@ -31,7 +31,7 @@ const toggleHeaderVisibility = (headerName: string) => {
 }
 
 
-export const headerRightButtons = (thisPageName: string) => {
+export const headerRightButtons = () => {
   const elementButtons = createElementWithAttributes("div", {
     id: "lse-toc-header-buttons",
     class: "flex items-center",
@@ -60,7 +60,7 @@ export const headerRightButtons = (thisPageName: string) => {
     elementUpdate.style.visibility = "hidden"
     setTimeout(() => (elementUpdate.style.visibility = "visible"), 2000)
     clearCachedHeaders()
-    refreshPageHeaders(thisPageName)
+    import("./routeCheck").then(m => m.routeCheck(booleanLogseqVersionMd()))
   })
   elementButtons.append(elementUpdate)
 

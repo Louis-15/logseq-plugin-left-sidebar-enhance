@@ -111,24 +111,6 @@ const updateHeadingElements = async (
   // DOMをクリア
   targetElement.innerHTML = ""
 
-  // additional buttons
-  const summaryEle = parent.document.querySelector("#lse-toc-container summary")
-  if (summaryEle) {
-      let buttonsContainer = summaryEle.querySelector("#lse-toc-header-buttons")
-      if (buttonsContainer) buttonsContainer.remove()
-      
-      const buttons = headerRightButtons(thisPageName)
-      // 绝对定位右侧对齐，兼容原生 summary 的排版
-      buttons.style.position = 'absolute'
-      buttons.style.right = '10px'
-      // 确保 summary 具备相对定位基础
-      ;(summaryEle as HTMLElement).style.position = 'relative'
-      ;(summaryEle as HTMLElement).style.display = 'flex'
-      ;(summaryEle as HTMLElement).style.alignItems = 'center'
-      
-      summaryEle.append(buttons)
-  }
-
   // content top buttons
   targetElement.append(contentTopButtons())
 
