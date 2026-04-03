@@ -48,10 +48,10 @@ export const commonSettings = (currentSettings?: Record<string, unknown>): Setti
                      },
                      {
                          key: settingKeys.toc.highlightHeaderOnHover,
-                         title: '鼠标悬停在数据块上时高亮显示标题',
+                         title: '光标焦点所在数据块时高亮侧栏所属标题',
                          type: 'boolean',
                          default: true,
-                         description: '当鼠标悬停在页面中的块上时，在标题列表中突出显示相应的标题。',
+                         description: '当编辑、点击页面中某一块时，在其所属层级的大纲侧栏标题上自动呈现常驻高亮，防跳转迷路。',
                      },
                      {
                          key: settingKeys.toc.enableJournalsList,
