@@ -1,9 +1,11 @@
 #lse-toc-container>details>summary {
     font-size: .9em;
-    cursor: default;
+    cursor: default !important;
     background-color: var(--ls-tertiary-background-color);
-    list-style: none;
-    text-align: left;
+    list-style: none !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
 }
 
 /* 隐藏浏览器原生三角 */
@@ -15,8 +17,8 @@
 #lse-toc-container>details>summary::before {
     content: "▶";
     font-size: 0.6em;
-    margin-right: 0.5em;
-    margin-left: 0.3em;
+    margin-right: 0.8em;
+    margin-left: 0em;
     transition: transform 0.2s ease;
     display: inline-block;
     opacity: 0.6;
