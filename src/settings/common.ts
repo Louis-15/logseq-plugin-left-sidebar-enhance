@@ -8,25 +8,17 @@ export const commonSettings = (currentSettings?: Record<string, unknown>): Setti
              list.push(
                           {
                                        key: settingKeys.common.booleanFavAndRecent,
-                                       title: t('Hide duplicate items in Favorites and History'),
+                                       title: '隐藏收藏夹和历史记录中的重复项目',
                                        type: 'boolean',
                                        default: true,
-                                       description: t('Automatically removes duplicates in Favorites and History when the plugin starts and every 10 minutes.'),
+                                       description: '插件启动时和每 10 分钟自动删除 Favorites 和 History 中的重复项。',
                           },
                           {
                                        key: settingKeys.common.loadShowByMouseOver,
                                        type: 'boolean',
-                                       title: t('Show left sidebar on mouse hover'),
-                                       description: t('Choose between three modes: show on hover, always show, or hide.'),
+                                       title: '当侧边栏隐藏时，是否开启悬停弹出功能',
+                                       description: '开启后，点击左上角按钮不再彻底关闭侧边栏，而是变为边缘悬停即可滑出。关闭此项则恢复原生彻底隐藏逻辑。',
                                        default: false,
-                          },
-                          {
-                                       key: settingKeys.common.showByMouseOverType,
-                                       type: 'enum',
-                                       title: t('Mouse hover behavior type'),
-                                       enumChoices: ['type A', 'type B'],
-                                       default: 'type B',
-                                       description: "type A: Inspired by 'mæn', type B: Inspired by 'sethyuan'.",
                           })
              return list
 }

@@ -2,7 +2,7 @@ main {
     @media (min-width: 640px) {
         & #left-sidebar {
             transform-origin: center left;
-            scale: 0.05 1;
+            scale: 0.2 1;
             opacity: 0;
             transition-property: opacity, scale;
             transition-duration: 80ms;

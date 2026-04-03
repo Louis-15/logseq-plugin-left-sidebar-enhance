@@ -9,17 +9,17 @@ export const visualTimerSettings = (currentSettings?: Record<string, unknown>): 
              list.push(
                           {// Heading
                                        key: settingKeys.visualTimer.heading,
-                                       title: t('Visual Timer settings'),
+                                       title: '可视化计时器设置',
                                        type: 'heading',
                                        default: null,
                                        description: '',
                           },
                           { // Master toggle
                                        key: settingKeys.visualTimer.master,
-                                       title: t('Enable visual timer in the left sidebar'),
+                                       title: '在左侧边栏启用可视化计时器',
                                        type: 'boolean',
                                        default: false,
-                                       description: t('Show circular progress-bars for remaining time.'),
+                                       description: '显示剩余时间环形进度条。',
                           })
 
              if (cfg[settingKeys.visualTimer.master] === false) return list
@@ -27,27 +27,27 @@ export const visualTimerSettings = (currentSettings?: Record<string, unknown>): 
              // Day window
              list.push({
                           key: settingKeys.visualTimer.enableDayWindow,
-                          title: t('Enable day-window progress bar'),
+                          title: '启用日间进度条',
                           type: 'boolean',
                           default: true,
-                          description: t('Show a progress bar for the configured daily time window.'),
+                          description: '显示一个每日时间窗口的倒数进度条。',
              })
 
              if (cfg[settingKeys.visualTimer.enableDayWindow] === true) {
                           list.push(
                                        {
                                                     key: settingKeys.visualTimer.dayWindowStartHour,
-                                                    title: t('Day window start hour'),
+                                                    title: '日间起始小时',
                                                     type: 'number',
                                                     default: 5,
-                                                    description: t('Start hour for the day window (0-23).'),
+                                                    description: '日间的起始小时 (0-23)。',
                                        },
                                        {
                                                     key: settingKeys.visualTimer.dayWindowEndHour,
-                                                    title: t('Bedtime hour'),
+                                                    title: '就寝小时',
                                                     type: 'number',
                                                     default: 24,
-                                                    description: t('Bedtime hour for the day window (1-24). 24 means midnight.'),
+                                                    description: '就寝小时 (1-24)。24 代表午夜。',
                                        })
              }
 
@@ -56,20 +56,20 @@ export const visualTimerSettings = (currentSettings?: Record<string, unknown>): 
              // Target date
              list.push({
                           key: settingKeys.visualTimer.enableTargetDate,
-                          title: t('Enable target-date progress bar'),
+                          title: '启用目标日期进度条',
                           type: 'boolean',
                           default: true,
-                          description: t('Show a progress bar counting down to a target date.'),
+                          description: '显示一个到达目标日期的倒计时进度条。',
              })
 
              if (cfg[settingKeys.visualTimer.enableTargetDate] === true) {
                           list.push({
                                        key: settingKeys.visualTimer.targetDate,
-                                       title: t('Target date'),
+                                       title: '目标日期',
                                        type: 'string',
                                        inputAs: 'date',
                                        default: '',
-                                       description: t('Pick the target date for the countdown. Progress is measured to 00:00 (start of that day).'),
+                                       description: '挑选倒计时的目标日期。进度计算至当日 00:00。',
                           })
              }
 

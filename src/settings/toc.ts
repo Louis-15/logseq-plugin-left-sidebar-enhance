@@ -9,56 +9,56 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
     list.push(
         {// Section header
             key: settingKeys.toc.heading,
-            title: t('Page outline function'),
+            title: '页面轮廓功能',
             type: 'heading',
             default: null,
-            description: '(Table of Contents)',
+            description: '（页面大纲）',
         },
         {// Master enable
             key: settingKeys.toc.master,
-            title: '',
+            title: '启用侧边栏页面大纲',
             type: 'boolean',
             default: true,
-            description: t('Enable'),
+            description: '启用',
         })
 
     if (cfg[settingKeys.toc.master] === true) {
         list.push(
             {
                 key: settingKeys.toc.booleanAsZoomPage,
-                title: t('Open pages as zoomed by default') + '🆕',
+                title: '默认以缩放视图打开页面' + '🆕',
                 type: 'boolean',
                 default: true,
-                description: t('If disabled, hold the `Ctrl` key and click to open as a zoomed block.'),
+                description: '如果禁用，长按 `Ctrl` 键并点击可将其作为缩放块打开。',
             },
             {
                 key: settingKeys.toc.highlightBlockOnHover,
-                title: t('Highlight blocks when hovering over headers'),
+                title: '鼠标悬停在标题上时高亮显示数据块',
                 type: 'boolean',
                 default: true,
-                description: t('Highlights the corresponding block when hovering over a header in the header list.'),
+                description: '鼠标悬停在标题列表中的标题时，高亮显示相应的数据块。',
             },
             {
                 key: settingKeys.toc.highlightHeaderOnHover,
-                title: t('Highlight headers when hovering over blocks'),
+                title: '鼠标悬停在数据块上时高亮显示标题',
                 type: 'boolean',
                 default: true,
-                description: t('Highlights the corresponding header in the header list when hovering over a block in the page.'),
+                description: '当鼠标悬停在页面中的块上时，在标题列表中突出显示相应的标题。',
             },
             {
                 key: settingKeys.toc.enableJournalsList,
-                title: t('Show date list in journals'),
+                title: '显示日记列表',
                 type: 'boolean',
                 default: true,
-                description: t('Toggle to display or hide the date list in journals.'),
+                description: '切换以显示或隐藏日记中的日期列表。',
             },
             {
                 key: settingKeys.toc.tocRemoveWordList,
-                title: t('Words to exclude from the header list'),
+                title: '要从标题列表中排除的单词',
                 type: 'string',
                 inputAs: 'textarea',
                 default: '',
-                description: t('Enter words to exclude, separated by line breaks.'),
+                description: '输入要排除的词，用换行符分隔。',
             })
 
         if (logseqVersionMd) {
@@ -66,80 +66,80 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
             list.push(
                 {
                     key: settingKeys.toc.headingNumberFileEnable,
-                    title: t('Enable heading numbering (file-update mode, file-based graphs only)'),
+                    title: '启用标题编号 (文件更新模式，仅支持本地图谱)',
                     type: 'boolean',
                     default: false,
-                    description: t('Automatically add hierarchical numbers to heading text in markdown files. Only works on local file-based graphs.'),
+                    description: '自动将层级编号添加到 Markdown 文件中的标题文本。仅适用于本地基于文件的图谱。',
                 })
 
             if (cfg[settingKeys.toc.headingNumberFileEnable] === true) {
                 list.push(
                     {
                         key: settingKeys.toc.headingNumberDelimiterFile,
-                        title: t('Heading number delimiter (file-update mode, new)'),
+                        title: '标题编号分隔符 (文件更新模式，新)',
                         type: 'string',
                         default: '.',
-                        description: t('New delimiter for heading numbers when updating files'),
+                        description: '更新文件时标题编号使用的新分隔符',
                     },
                     {
                         key: settingKeys.toc.headingNumberDelimiterFileOld,
-                        title: t('Heading number delimiter (file-update mode, old)'),
+                        title: '标题编号分隔符 (文件更新模式，旧)',
                         type: 'string',
                         default: '.',
-                        description: t('Old delimiter to detect and replace when recalculating heading numbers'),
+                        description: '重新计算标题编号时要检测和替换的旧分隔符',
                     })
             }
 
             list.push(
                 {
                     key: settingKeys.toc.headingNumberCleanup,
-                    title: t('Remove heading numbers from current page'),
+                    title: '从当前页面删除标题编号',
                     type: 'boolean',
                     default: false,
-                    description: t('⚠️ When enabled, removes all heading numbers from the currently open page. Setting will automatically reset to false when complete.'),
+                    description: '⚠️ 启用后，将从当前打开的页面中删除所有标题编号。完成后将自动重置为 false。',
                 },
                 {
                     key: settingKeys.toc.pageStateStorageMode,
-                    title: t('Page activation storage mode'),
+                    title: '页面激活状态存储模式',
                     type: 'enum',
                     enumChoices: ['storeTrueOnly', 'storeFalseOnly'],
                     enumPicker: 'select',
                     default: 'storeTrueOnly',
-                    description: t('storeTrueOnly: Store only enabled pages. storeFalseOnly: Enable by default, store only disabled pages.'),
+                    description: 'storeTrueOnly: 仅存储已启用的页面。storeFalseOnly: 默认启用，仅存储禁用的页面。',
                 },
                 {
                     key: settingKeys.toc.pageStates,
-                    title: t('Page activation states'),
+                    title: '页面激活状态',
                     type: 'object',
                     default: {},
-                    description: t('Internal storage for per-page activation states. Managed by toolbar icon.'),
+                    description: '每页激活状态的内部存储。由工具栏图标管理。',
                 },
                 // Auto heading level adjustment
                 {
                     key: settingKeys.toc.autoHeadingLevelEnabled,
-                    title: t('Enable auto-adjust heading levels'),
+                    title: '启用自动调整标题等级',
                     type: 'boolean',
                     default: false,
-                    description: t('Automatically adjust Markdown heading levels based on outline depth'),
+                    description: '根据缩进层级自动调整 Markdown 标题等级',
                 })
 
             if (cfg[settingKeys.toc.autoHeadingLevelEnabled] === true) {
                 list.push(
                     {
                         key: settingKeys.toc.autoHeadingLevelPreset,
-                        title: t('Heading level range preset'),
+                        title: '标题等级范围预设',
                         type: 'enum',
                         enumChoices: ['h2-h6', 'h1-h3', 'h2-h4'],
                         enumPicker: 'select',
                         default: 'h2-h6',
-                        description: t('Select the range of heading levels to use when normalizing'),
+                        description: '选择标准化时要使用的标题等级范围',
                     },
                     {
                         key: settingKeys.toc.autoHeadingLevelReserveH1,
-                        title: t('Reserve H1 for page title'),
+                        title: '保留 H1 给页面标题',
                         type: 'boolean',
                         default: false,
-                        description: t('When enabled, H1 is reserved for page titles and content headings start from H2'),
+                        description: '启用后，H1 将预留给页面标题，内容标题从 H2 开始',
                     })
             }
         }

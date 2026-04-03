@@ -14,50 +14,28 @@ export const loadShowByMouseOver = () => {
             if (logseq.settings?.[settingKeys.common.loadShowByMouseOver] === true)
                 whenToggleEvent()
         })
-
-        // 設定変更は中央ディスパッチャで処理するため、ここでは登録しない
     }, 1000)
 
-
     if (logseq.settings?.[settingKeys.common.loadShowByMouseOver] === true) {
-
-        //前回のメモリーで、マウスオーバー表示の場合
-        if (!logseq.settings?.toggleShowByMouseOver || logseq.settings?.toggleShowByMouseOver === "mouseOver") {
-            selectShowByMouseOverType(logseq.settings?.[settingKeys.common.showByMouseOverType] as string)
+        if (logseq.settings?.toggleShowByMouseOver === "mouseOver") {
+            injectHoverCSS()
             logseq.App.setLeftSidebarVisible(true)
-        } else
-            if (logseq.settings!.toggleShowByMouseOver === "normal") {
-                logseq.App.setLeftSidebarVisible(true)
-            } else
-                if (logseq.settings!.toggleShowByMouseOver === "off") {
-                    logseq.App.setLeftSidebarVisible(false)
-                }
-
-        // 左メニューのボタンのスイッチング用
+        } else {
+            removeProvideStyle(keyShowByMouseOver)
+            // 不强制覆盖原生状体，让其自然呈现
+        }
         handleEvent(1000)
     }
 
 }
 
-const selectShowByMouseOverType = (setting: string) => {
-    switch (setting) {
-        case "type A":
-            logseq.provideStyle({ key: keyShowByMouseOver, style: CSSTypeA })
-            break
-        case "type B":
-            logseq.provideStyle({ key: keyShowByMouseOver, style: CSSTypeB })
-            break
-    }
-
+const injectHoverCSS = () => {
+    // 默认使用原 Type B 方案 (sethyuan 极致紧凑弹出风格)
+    logseq.provideStyle({ key: keyShowByMouseOver, style: CSSTypeB })
 }
 
-
-
 const handleEvent = (time: number) => {
-
-    // 待機が必要。ボタンがまだ生成されていない場合がある
     setTimeout(() => {
-
         if (processingMouseOverButton === true) return
         const button = parent.document.getElementById("left-menu") as HTMLButtonElement | null
         if (!button) {
@@ -65,44 +43,28 @@ const handleEvent = (time: number) => {
             return
         }
         button.addEventListener("click", whenToggleEvent)
-
-        processingMouseOverButton = true // 連続してイベントが発生しないようにする 一度のみ
+        processingMouseOverButton = true
     }, time)
 }
 
-
 const whenToggleEvent = () => {
+    if (logseq.settings!.loadShowByMouseOver === false) return 
 
-    if (logseq.settings!.loadShowByMouseOver === false) return //プラグイン設定で無効化されている場合は何もしない
-
-    if (logseq.settings!.toggleShowByMouseOver === "mouseOver") {
-        //前回のメモリーがマウスオーバーの場合、ノーマル表示にする
-        logseq.App.setLeftSidebarVisible(true)
+    if (logseq.settings!.toggleShowByMouseOver !== "mouseOver") {
+        // 当前是常规展开，切换为悬停隐藏模式
+        logseq.updateSettings({ toggleShowByMouseOver: "mouseOver" })
+        setTimeout(() => {
+            logseq.App.setLeftSidebarVisible(true) // 强制原生开启以供 CSS 接管
+            injectHoverCSS()
+        }, 10)
+    } else {
+        // 当前是悬停隐藏模式，切换回常规展开
+        logseq.updateSettings({ toggleShowByMouseOver: "normal" })
         setTimeout(() => {
             removeProvideStyle(keyShowByMouseOver)
-            logseq.updateSettings({ toggleShowByMouseOver: "normal" })
-            logseq.UI.showMsg(t("Left sidebar is now normal display."), "info", { timeout: 2200 })
+            logseq.App.setLeftSidebarVisible(true) // 恢复原生展开
         }, 10)
-    } else
-        if (logseq.settings!.toggleShowByMouseOver === "normal") {
-            //前回のメモリーはノーマル表示の場合、非表示にする
-            logseq.App.setLeftSidebarVisible(false)
-            setTimeout(() => {
-                removeProvideStyle(keyShowByMouseOver)
-                logseq.updateSettings({ toggleShowByMouseOver: "off" })
-                logseq.UI.showMsg(t("Left sidebar is now hidden."), "info", { timeout: 2200 })
-            }, 10)
-        } else
-            if (logseq.settings!.toggleShowByMouseOver === "off") {
-                //前回のメモリーが非表示の場合、マウスオーバーにする
-                logseq.App.setLeftSidebarVisible(true)
-                setTimeout(() => {
-                    selectShowByMouseOverType(logseq.settings!.showByMouseOverType as string)
-                    handleEvent(100)
-                    logseq.updateSettings({ toggleShowByMouseOver: "mouseOver" })
-                    logseq.UI.showMsg(t("Left sidebar is now mouse over display."), "info", { timeout: 2200 })
-                }, 10)
-            }
+    }
 }
 
 /**
@@ -110,24 +72,22 @@ const whenToggleEvent = () => {
  * - 表示方式・オンオフの変更を検知してスタイルやトグルを切り替える
  */
 export const handleMouseoverSettingsChanged = async (newSet: LSPluginBaseInfo['settings'], oldSet: LSPluginBaseInfo['settings']): Promise<void> => {
-    // マウスオーバーの表示方法が変更された場合
-    if (oldSet[settingKeys.common.showByMouseOverType] !== newSet[settingKeys.common.showByMouseOverType]
-        && newSet[settingKeys.common.loadShowByMouseOver] === true) {
-
-        removeProvideStyle(keyShowByMouseOver)
-        if (newSet.toggleShowByMouseOver === "mouseOver")
-            selectShowByMouseOverType(newSet.showByMouseOverType as string)
-        logseq.UI.showMsg(t("Select mouse over type") + ": " + newSet.showByMouseOverType, "info", { timeout: 2200 })
-    }
-
-    // プラグイン設定で無効が有効になった場合は、トグルも強制的に有効にする
+    // プラグイン設定で無効が有効になった場合は、トグル也强制开启为悬停模式
     if (oldSet[settingKeys.common.loadShowByMouseOver] === false
-        && newSet[settingKeys.common.loadShowByMouseOver] === true)
-        setTimeout(() =>
-            logseq.updateSettings({ toggleShowByMouseOver: "mouseOver" })
-            , 10)
-    else
-        if (oldSet[settingKeys.common.loadShowByMouseOver] === true
-            && newSet[settingKeys.common.loadShowByMouseOver] === false)
-            removeProvideStyle(keyShowByMouseOver)
+        && newSet[settingKeys.common.loadShowByMouseOver] === true) {
+        logseq.updateSettings({ toggleShowByMouseOver: "mouseOver" })
+        setTimeout(() => {
+            logseq.App.setLeftSidebarVisible(true)
+            injectHoverCSS()
+            handleEvent(100) // 确保挂载了点击事件
+        }, 10)
+    }
+    else if (oldSet[settingKeys.common.loadShowByMouseOver] === true
+             && newSet[settingKeys.common.loadShowByMouseOver] === false) {
+        removeProvideStyle(keyShowByMouseOver)
+        logseq.updateSettings({ toggleShowByMouseOver: "normal" }) // 重置为原生状态
+        setTimeout(() => {
+            logseq.App.setLeftSidebarVisible(true) // 让其呈现原生的打开状态
+        }, 10)
+    }
 }
