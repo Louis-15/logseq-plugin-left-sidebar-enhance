@@ -7,6 +7,7 @@ main {
             transition-property: opacity, scale;
             transition-duration: 80ms;
             transition-timing-function: ease-in-out;
+            z-index: 999;
 
             &:hover {
                 scale: 1;
@@ -16,6 +17,11 @@ main {
 
         & #main-container.is-left-sidebar-open {
             padding-left: 0;
+        }
+
+        /* 确保顶部导航栏（包含搜索和原生侧边栏开关）的层级永远高于悬浮侧边栏 */
+        & #head {
+            z-index: 1000 !important;
         }
 
     }
