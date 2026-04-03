@@ -9,43 +9,14 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
     list.push(
         {// Section header
             key: settingKeys.toc.heading,
-            title: '页面轮廓功能',
+            title: '二、自动编号相关',
             type: 'heading',
             default: null,
-            description: '（页面大纲）',
-        },
-        {// Master enable
-            key: settingKeys.toc.master,
-            title: '启用侧边栏页面大纲',
-            type: 'boolean',
-            default: true,
-            description: '启用',
+            description: '所有跟自动大纲编号相关的设置',
         })
 
     if (cfg[settingKeys.toc.master] === true) {
         list.push(
-
-            {
-                key: settingKeys.toc.highlightBlockOnHover,
-                title: '鼠标悬停在标题上时高亮显示数据块',
-                type: 'boolean',
-                default: true,
-                description: '鼠标悬停在标题列表中的标题时，高亮显示相应的数据块。',
-            },
-            {
-                key: settingKeys.toc.highlightHeaderOnHover,
-                title: '鼠标悬停在数据块上时高亮显示标题',
-                type: 'boolean',
-                default: true,
-                description: '当鼠标悬停在页面中的块上时，在标题列表中突出显示相应的标题。',
-            },
-            {
-                key: settingKeys.toc.enableJournalsList,
-                title: '显示日记列表',
-                type: 'boolean',
-                default: true,
-                description: '切换以显示或隐藏日记中的日期列表。',
-            },
             {
                 key: settingKeys.toc.tocRemoveWordList,
                 title: '要从标题列表中排除的单词',
