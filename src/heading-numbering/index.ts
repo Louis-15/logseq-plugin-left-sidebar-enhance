@@ -116,8 +116,7 @@ export const togglePageState = async (pageName: string): Promise<{ newState: boo
     } else {
         // 从白名单移除，并清除该页面的编号文本
         await removePageFromWhitelist(pageName)
-        const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
-        const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
+        const oldDelimiter = '.'
         await cleanupPageHeadingNumbers(pageName, oldDelimiter)
     }
 
@@ -184,8 +183,8 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
         await normalizePageHeadingsInternal(pageName, true) // silent mode
     }
 
-    const newDelimiter = (logseq.settings?.[settingKeys.toc.headingNumberDelimiterFile] as string) || '.'
-    const oldDelimiter = (logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld] as string) || '.'
+    const newDelimiter = '.'
+    const oldDelimiter = '.'
 
     try {
         // Get all blocks from the page
@@ -530,9 +529,7 @@ export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet:
     }
 
     // File-update mode changes
-    if (oldMode !== newMode ||
-        oldSet[settingKeys.toc.headingNumberDelimiterFile] !== newSet[settingKeys.toc.headingNumberDelimiterFile] ||
-        oldSet[settingKeys.toc.headingNumberDelimiterFileOld] !== newSet[settingKeys.toc.headingNumberDelimiterFileOld]) {
+    if (oldMode !== newMode) {
         // Re-apply numbering to current page if enabled
         const currentPage = await logseq.Editor.getCurrentPage()
         const mode = newSet[settingKeys.toc.headingNumberFileEnable]

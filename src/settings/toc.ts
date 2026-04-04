@@ -38,23 +38,6 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
                     description: '自动将层级编号添加到 Markdown 文件中的标题文本，会直接修改笔记文本。',
                 })
 
-            if (cfg[settingKeys.toc.headingNumberFileEnable] === '全局自动编号' || cfg[settingKeys.toc.headingNumberFileEnable] === '单页面手动开关' || cfg[settingKeys.toc.headingNumberFileEnable] === true) {
-                list.push(
-                    {
-                        key: settingKeys.toc.headingNumberDelimiterFile,
-                        title: '标题编号分隔符 (文件更新模式，新)',
-                        type: 'string',
-                        default: '.',
-                        description: '更新文件时标题编号使用的新分隔符',
-                    },
-                    {
-                        key: settingKeys.toc.headingNumberDelimiterFileOld,
-                        title: '标题编号分隔符 (文件更新模式，旧)',
-                        type: 'string',
-                        default: '.',
-                        description: '重新计算标题编号时要检测和替换的旧分隔符',
-                    })
-            }
 
             // 自动标题等级调整
             list.push(

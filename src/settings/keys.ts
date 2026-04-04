@@ -9,8 +9,6 @@ export const settingKeys = {
                           tocRemoveWordList: 'tocRemoveWordList',
                           // Heading numbering - file update mode
                           headingNumberFileEnable: 'headingNumberFileEnable',
-                          headingNumberDelimiterFile: 'headingNumberDelimiterFile',
-                          headingNumberDelimiterFileOld: 'headingNumberDelimiterFileOld',
                           // 以下键已废弃（白名单现在存储在图谱内配置页面中）
                           // Auto heading level adjustment
                           autoHeadingLevelEnabled: 'autoHeadingLevelEnabled',
