@@ -205,7 +205,8 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
 
     // 2. 更新工具栏编号授权图标状态（仅 Markdown 模式）
     if (logseqVersionMd === true) {
-        const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
+        const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
+        const isEnabled = mode === '全局自动编号' || ((mode === '单页面手动开关' || mode === true) && logseq.settings?.pageSwitch?.[pageName] === true)
         if (isEnabled) {
             parent.document.documentElement.classList.add('lse-heading-enabled')
         } else {
@@ -215,7 +216,11 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
     }
 
     // 3. 若启用了文件更新模式编号，且当前页面已授权，则自动应用编号
-    if (logseq.settings?.[settingKeys.toc.headingNumberFileEnable] === true) {
+    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
+    if (mode === '全局自动编号') {
+        parent.document.documentElement.classList.add('lse-heading-enabled')
+        await applyHeadingNumbersToPage(pageName)
+    } else if (mode === '单页面手动开关' || mode === true) {
         const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
         if (isEnabled) {
             parent.document.documentElement.classList.add('lse-heading-enabled')

@@ -31,13 +31,14 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
             list.push(
                 {
                     key: settingKeys.toc.headingNumberFileEnable,
-                    title: '启用标题编号 (文件更新模式，仅支持本地图谱)',
-                    type: 'boolean',
-                    default: false,
-                    description: '自动将层级编号添加到 Markdown 文件中的标题文本。仅适用于本地基于文件的图谱。',
+                    title: '启用标题自动编号',
+                    type: 'enum',
+                    enumChoices: ['全局自动编号', '单页面手动开关', '关闭自动编号'],
+                    default: '关闭自动编号',
+                    description: '自动将层级编号添加到 Markdown 文件中的标题文本，会直接修改笔记文本。',
                 })
 
-            if (cfg[settingKeys.toc.headingNumberFileEnable] === true) {
+            if (cfg[settingKeys.toc.headingNumberFileEnable] === '全局自动编号' || cfg[settingKeys.toc.headingNumberFileEnable] === '单页面手动开关' || cfg[settingKeys.toc.headingNumberFileEnable] === true) {
                 list.push(
                     {
                         key: settingKeys.toc.headingNumberDelimiterFile,

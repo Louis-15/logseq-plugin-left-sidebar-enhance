@@ -97,17 +97,28 @@ const detectFileBasedGraph = async (): Promise<boolean> => {
  * Check if page should have heading numbering features applied
  */
 export const isPageActive = (pageName: string): boolean => {
+    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
+    if (mode === '全局自动编号') return true
+    if (mode === '关闭自动编号' || mode === false || !mode) return false
+
+    // 单页面手动开关模式
     const storageMode = logseq.settings?.[settingKeys.toc.pageStateStorageMode] as string || 'storeTrueOnly'
+    // 兼容原有的 pageSwitch（通过 index.ts 以及旧版逻辑保留的页级开关）
+    const pageSwitch = logseq.settings?.pageSwitch as Record<string, boolean> || {}
     const pageStates = logseq.settings?.[settingKeys.toc.pageStates] as Record<string, boolean> || {}
 
-    console.log('Checking if page is active:', pageName, 'Storage mode:', storageMode, 'Page states:', pageStates)
+    // 两个字典只要其中一个记录为 true，就视为开启
+    const explicitlyTrue = pageStates[pageName] === true || pageSwitch[pageName] === true
+    // 如果有明确的关闭记录，优先尊重关闭
+    const explicitlyFalse = pageStates[pageName] === false || pageSwitch[pageName] === false
+
 
     if (storageMode === 'storeTrueOnly') {
         // Only pages explicitly set to true are active
-        return pageStates[pageName] === true
+        return explicitlyTrue
     } else {
         // All pages active except those explicitly set to false
-        return pageStates[pageName] !== false
+        return !explicitlyFalse
     }
 }
 
@@ -199,7 +210,8 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
     }
 
     // Check if file-update mode is enabled
-    if (logseq.settings?.[settingKeys.toc.headingNumberFileEnable] !== true) {
+    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
+    if (mode === '关闭自动编号' || mode === false || !mode) {
         return
     }
 
@@ -537,7 +549,8 @@ export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet:
         oldSet[settingKeys.toc.headingNumberDelimiterFileOld] !== newSet[settingKeys.toc.headingNumberDelimiterFileOld]) {
         // Re-apply  numbering to current page if enabled
         const currentPage = await logseq.Editor.getCurrentPage()
-        if (currentPage && newSet[settingKeys.toc.headingNumberFileEnable] === true) {
+        const mode = newSet[settingKeys.toc.headingNumberFileEnable]
+        if (currentPage && (mode === '全局自动编号' || mode === '单页面手动开关' || mode === true)) {
             const pageName = (currentPage.originalName || currentPage.name || '') as string
             if (pageName) {
                 await applyHeadingNumbersToPage(pageName)
