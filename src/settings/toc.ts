@@ -56,24 +56,8 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
                     })
             }
 
+            // 自动标题等级调整
             list.push(
-                {
-                    key: settingKeys.toc.pageStateStorageMode,
-                    title: '页面激活状态存储模式',
-                    type: 'enum',
-                    enumChoices: ['storeTrueOnly', 'storeFalseOnly'],
-                    enumPicker: 'select',
-                    default: 'storeTrueOnly',
-                    description: 'storeTrueOnly: 仅存储已启用的页面。storeFalseOnly: 默认启用，仅存储禁用的页面。',
-                },
-                {
-                    key: settingKeys.toc.pageStates,
-                    title: '页面激活状态',
-                    type: 'object',
-                    default: {},
-                    description: '每页激活状态的内部存储。由工具栏图标管理。',
-                },
-                // Auto heading level adjustment
                 {
                     key: settingKeys.toc.autoHeadingLevelEnabled,
                     title: '启用自动调整标题等级',

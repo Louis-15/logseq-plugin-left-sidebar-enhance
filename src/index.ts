@@ -9,10 +9,11 @@ import { settingKeys } from './settings/keys'
 import { initSettingsDispatcher } from './settings/onSettingsChanged'
 import { removeContainer } from './util/lib'
 import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/sethyuan/logseq-l10n
-import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers } from './heading-numbering'
-import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
+import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers, isPageActive } from './heading-numbering'
+import { removeToolbarIcon, updateToolbarIcon, createToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
+import { loadConfigFromPage } from './heading-numbering/pageWhitelist'
 
 // 当前页面原始名称（全局状态，供各模块读取）
 let currentPageOriginalName: PageEntity["originalName"] = ""
@@ -26,33 +27,6 @@ let logseqVersionMd: boolean = false
 // 对外暴露的版本模式查询方法
 export const booleanLogseqVersionMd = () => logseqVersionMd
 
-/**
- * 切换指定页面的自动编号授权状态
- * @param pageName - 页面名称
- * @param forceState - 可选，强制指定目标状态（true=启用, false=关闭）
- * @returns 切换后的新状态
- */
-export const togglePageState = async (pageName: string, forceState?: boolean) => {
-    let settings = logseq.settings?.pageSwitch as Record<string, boolean> || {}
-    const currentState = settings[pageName] || false
-    const newState = forceState !== undefined ? forceState : !currentState
-    
-    settings[pageName] = newState
-    logseq.updateSettings({ pageSwitch: settings })
-
-    // 同步给 body 一个类名，便于全页各种 CSS 做状态联动（比如顶部授权按钮置灰等）
-    if (newState) {
-        parent.document.documentElement.classList.add('lse-heading-enabled')
-    } else {
-        parent.document.documentElement.classList.remove('lse-heading-enabled')
-        // 关闭编号时，自动清理该页面已有的编号文本
-        const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
-        const oldDelimiter: string = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
-        await cleanupPageHeadingNumbers(pageName, oldDelimiter)
-    }
-
-    return newState
-}
 
 /** 更新当前页面状态（由路由检查模块在页面切换时调用） */
 export const updateCurrentPage = async (pageName: string, pageUuid: PageEntity["uuid"]) => {
@@ -118,10 +92,12 @@ const main = async () => {
     parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
-  // === 图谱切换时重置状态 ===
+  // === 图谱切换时重置状态并重新加载白名单 ===
   logseq.App.onCurrentGraphChanged(async () => {
     currentPageOriginalName = ""
     logseqVersionMd = await checkLogseqVersion()
+    // 图谱切换后重新加载新图谱的白名单
+    await loadConfigFromPage()
   })
 
 }/* end_main */
@@ -206,28 +182,24 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
     // 2. 更新工具栏编号授权图标状态（仅 Markdown 模式）
     if (logseqVersionMd === true) {
         const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
-        const isEnabled = mode === '全局自动编号' || ((mode === '单页面手动开关' || mode === true) && logseq.settings?.pageSwitch?.[pageName] === true)
-        if (isEnabled) {
+        // 只在“单页面手动开关”模式下显示工具栏按钮
+        if (mode === '单页面手动开关') {
+            updateToolbarIcon(pageName)
+        } else {
+            removeToolbarIcon()
+        }
+
+        const enabled = isPageActive(pageName)
+        if (enabled) {
             parent.document.documentElement.classList.add('lse-heading-enabled')
         } else {
             parent.document.documentElement.classList.remove('lse-heading-enabled')
         }
-        updateToolbarIcon(pageName)
     }
 
-    // 3. 若启用了文件更新模式编号，且当前页面已授权，则自动应用编号
-    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
-    if (mode === '全局自动编号') {
-        parent.document.documentElement.classList.add('lse-heading-enabled')
+    // 3. 若页面已启用编号（全局或手动白名单），自动应用编号
+    if (isPageActive(pageName)) {
         await applyHeadingNumbersToPage(pageName)
-    } else if (mode === '单页面手动开关' || mode === true) {
-        const isEnabled = logseq.settings?.pageSwitch?.[pageName] === true
-        if (isEnabled) {
-            parent.document.documentElement.classList.add('lse-heading-enabled')
-            await applyHeadingNumbersToPage(pageName)
-        } else {
-            parent.document.documentElement.classList.remove('lse-heading-enabled')
-        }
     }
   }, 50)
 

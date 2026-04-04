@@ -11,9 +11,7 @@ export const settingKeys = {
                           headingNumberFileEnable: 'headingNumberFileEnable',
                           headingNumberDelimiterFile: 'headingNumberDelimiterFile',
                           headingNumberDelimiterFileOld: 'headingNumberDelimiterFileOld',
-                          // Per-page activation
-                          pageStateStorageMode: 'pageStateStorageMode',
-                          pageStates: 'pageStates',
+                          // 以下键已废弃（白名单现在存储在图谱内配置页面中）
                           // Auto heading level adjustment
                           autoHeadingLevelEnabled: 'autoHeadingLevelEnabled',
                           autoHeadingLevelPreset: 'autoHeadingLevelPreset',

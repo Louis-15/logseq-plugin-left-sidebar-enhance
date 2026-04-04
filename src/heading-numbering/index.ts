@@ -7,33 +7,26 @@ import { booleanLogseqVersionMd } from '..'
 import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTocBlock } from '../page-outline/findHeaders'
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
+import { loadConfigFromPage, isPageWhitelisted, addPageToWhitelist, removePageFromWhitelist, getBlockState, setBlockState } from './pageWhitelist'
 
 let isFileBasedGraph = false
 
-// === 块编号状态管理（存储在插件设置中，不使用 block properties）===
+// === 块编号状态管理（存储在图谱配置页面中，按图谱隔离）===
 
 /**
  * 获取块的编号状态（skip / lock / repeat / undefined）
- * 使用扁平键 headingState_{uuid} 直接存储，避免嵌套对象的延迟与覆盖问题
+ * 从图谱级配置页面的内存缓存中读取
  */
 export const getBlockHeadingState = (blockUuid: string): string | undefined => {
-    const val = logseq.settings?.[`headingState_${blockUuid}`]
-    if (val && typeof val === 'string') return val
-    return undefined
+    return getBlockState(blockUuid)
 }
 
 /**
  * 设置块的编号状态
- * 扁平化存储：每个块一个独立的顶层 key，同步生效，没有延迟
+ * 写入图谱级配置页面（同时更新内存缓存和持久化存储）
  */
-export const setBlockHeadingState = (blockUuid: string, state: string | null) => {
-    const key = `headingState_${blockUuid}`
-    if (state === null) {
-        // 写入空字符串表示清除（Logseq 不支持真正删除 key）
-        logseq.updateSettings({ [key]: '' })
-    } else {
-        logseq.updateSettings({ [key]: state })
-    }
+export const setBlockHeadingState = async (blockUuid: string, state: string | null): Promise<void> => {
+    await setBlockState(blockUuid, state)
 }
 
 // Top-level regular expressions and helpers
@@ -67,14 +60,15 @@ const extractGeneralNumber = (content: string): string | null => {
 }
 
 /**
- * Initialize heading numbering features
+ * 初始化标题编号功能
+ * 检测图谱类型并加载编号配置（白名单 + 块状态）
  */
 export const initHeadingNumbering = async () => {
-    // Detect if current graph is file-based
+    // 检测当前图谱是否为基于文件的本地图谱
     isFileBasedGraph = await detectFileBasedGraph()
 
-    // Apply initial settings
-    // display-only numbering and level marks removed
+    // 从图谱的配置页面加载白名单和块状态
+    await loadConfigFromPage()
 }
 
 /**
@@ -94,76 +88,40 @@ const detectFileBasedGraph = async (): Promise<boolean> => {
 // display-only numbering and related CSS removed
 
 /**
- * Check if page should have heading numbering features applied
+ * 判断指定页面是否应当启用自动编号
+ * - 全局自动编号：所有页面均启用
+ * - 单页面手动开关：仅白名单中的页面启用
+ * - 关闭自动编号：所有页面均不启用
  */
 export const isPageActive = (pageName: string): boolean => {
     const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
     if (mode === '全局自动编号') return true
     if (mode === '关闭自动编号' || mode === false || !mode) return false
 
-    // 单页面手动开关模式
-    const storageMode = logseq.settings?.[settingKeys.toc.pageStateStorageMode] as string || 'storeTrueOnly'
-    // 兼容原有的 pageSwitch（通过 index.ts 以及旧版逻辑保留的页级开关）
-    const pageSwitch = logseq.settings?.pageSwitch as Record<string, boolean> || {}
-    const pageStates = logseq.settings?.[settingKeys.toc.pageStates] as Record<string, boolean> || {}
-
-    // 两个字典只要其中一个记录为 true，就视为开启
-    const explicitlyTrue = pageStates[pageName] === true || pageSwitch[pageName] === true
-    // 如果有明确的关闭记录，优先尊重关闭
-    const explicitlyFalse = pageStates[pageName] === false || pageSwitch[pageName] === false
-
-
-    if (storageMode === 'storeTrueOnly') {
-        // Only pages explicitly set to true are active
-        return explicitlyTrue
-    } else {
-        // All pages active except those explicitly set to false
-        return !explicitlyFalse
-    }
+    // 单页面手动开关模式：查询白名单
+    return isPageWhitelisted(pageName)
 }
 
 /**
- * Toggle page activation state
+ * 切换页面的自动编号状态（白名单模式）
+ * 开启时添加到白名单，关闭时移除并清除已有编号
  */
-export const togglePageState = async (pageName: string): Promise<{ newState: boolean; hadEntry: boolean }> => {
-
-    const pageStates = logseq.settings?.[settingKeys.toc.pageStates] as Record<string, boolean> || {}
-
+export const togglePageState = async (pageName: string): Promise<{ newState: boolean }> => {
     const currentState = isPageActive(pageName)
     const newState = !currentState
 
-    const storageMode = logseq.settings?.[settingKeys.toc.pageStateStorageMode] as string || 'storeTrueOnly'
-    if (storageMode === 'storeTrueOnly') {
-        if (newState) {
-            pageStates[pageName] = true
-        } else {
-            delete pageStates[pageName]
-            const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
-            const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
-            await cleanupPageHeadingNumbers(pageName, oldDelimiter)
-        }
+    if (newState) {
+        // 添加到白名单
+        await addPageToWhitelist(pageName)
     } else {
-        // storeFalseOnly
-        if (newState) {
-            delete pageStates[pageName]
-        } else {
-            pageStates[pageName] = false
-            const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
-            const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
-            await cleanupPageHeadingNumbers(pageName, oldDelimiter)
-        }
+        // 从白名单移除，并清除该页面的编号文本
+        await removePageFromWhitelist(pageName)
+        const delimiterSetting = logseq.settings?.[settingKeys.toc.headingNumberDelimiterFileOld]
+        const oldDelimiter = typeof delimiterSetting === 'string' ? delimiterSetting : '.'
+        await cleanupPageHeadingNumbers(pageName, oldDelimiter)
     }
-    logseq.updateSettings({
-        [settingKeys.toc.pageStates]: null
-    })
-    // Debugging logs
-    setTimeout(() => {
-        logseq.updateSettings({
-            [settingKeys.toc.pageStates]: pageStates
-        })
-    }, 100)
-    const hadEntry = Object.prototype.hasOwnProperty.call(pageStates, pageName)
-    return { newState, hadEntry }
+
+    return { newState }
 }
 
 /**
@@ -537,17 +495,45 @@ const extractNumberFromHeading = (firstLine: string, delimiter: string): string 
 }
 
 /**
- * Handle settings changed
+ * 处理编号相关设置变更
+ * 包括模式切换时工具栏按钮的即时显隐
  */
 export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet: any): Promise<boolean> => {
     // display-only numbering and heading level marks removed
 
+    const oldMode = oldSet[settingKeys.toc.headingNumberFileEnable]
+    const newMode = newSet[settingKeys.toc.headingNumberFileEnable]
+
+    // 模式变更时，即时更新工具栏按钮显隐
+    if (oldMode !== newMode) {
+        const { removeToolbarIcon, updateToolbarIcon } = await import('./toolbarIcon')
+        const currentPage = await logseq.Editor.getCurrentPage()
+        const pageName = currentPage ? ((currentPage as any).originalName || (currentPage as any).name || '') as string : ''
+
+        if (newMode === '单页面手动开关') {
+            // 切到手动模式：显示工具栏按钮
+            if (pageName) updateToolbarIcon(pageName)
+        } else {
+            // 全局或关闭模式：隐藏工具栏按钮
+            removeToolbarIcon()
+        }
+
+        // 更新 CSS 类名
+        if (pageName) {
+            const enabled = isPageActive(pageName)
+            if (enabled) {
+                parent.document.documentElement.classList.add('lse-heading-enabled')
+            } else {
+                parent.document.documentElement.classList.remove('lse-heading-enabled')
+            }
+        }
+    }
 
     // File-update mode changes
-    if (oldSet[settingKeys.toc.headingNumberFileEnable] !== newSet[settingKeys.toc.headingNumberFileEnable] ||
+    if (oldMode !== newMode ||
         oldSet[settingKeys.toc.headingNumberDelimiterFile] !== newSet[settingKeys.toc.headingNumberDelimiterFile] ||
         oldSet[settingKeys.toc.headingNumberDelimiterFileOld] !== newSet[settingKeys.toc.headingNumberDelimiterFileOld]) {
-        // Re-apply  numbering to current page if enabled
+        // Re-apply numbering to current page if enabled
         const currentPage = await logseq.Editor.getCurrentPage()
         const mode = newSet[settingKeys.toc.headingNumberFileEnable]
         if (currentPage && (mode === '全局自动编号' || mode === '单页面手动开关' || mode === true)) {
@@ -557,7 +543,7 @@ export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet:
             }
         }
     }
-    if (oldSet[settingKeys.toc.headingNumberFileEnable] !== newSet[settingKeys.toc.headingNumberFileEnable])
+    if (oldMode !== newMode)
         return true
     return false
 }

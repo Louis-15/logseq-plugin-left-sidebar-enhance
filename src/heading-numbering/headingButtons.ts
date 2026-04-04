@@ -226,11 +226,11 @@ const handleSkip = async (blockUuid: string) => {
     const current = getBlockHeadingState(blockUuid)
     if (current === 'skip') {
         // 取消跳过
-        setBlockHeadingState(blockUuid, null)
+        await setBlockHeadingState(blockUuid, null)
         logseq.UI.showMsg('已取消跳过', 'info', { timeout: 1500 })
     } else {
         // 【关键】先写入状态，再修改块内容，避免 onChanged 竞态
-        setBlockHeadingState(blockUuid, 'skip')
+        await setBlockHeadingState(blockUuid, 'skip')
         await removeNumberFromBlock(blockUuid)
         logseq.UI.showMsg('已跳过编号', 'success', { timeout: 1500 })
     }
@@ -250,10 +250,10 @@ const handleLock = async (blockUuid: string) => {
 
     const current = getBlockHeadingState(blockUuid)
     if (current === 'lock') {
-        setBlockHeadingState(blockUuid, null)
+        await setBlockHeadingState(blockUuid, null)
         logseq.UI.showMsg('已取消锁定', 'info', { timeout: 1500 })
     } else {
-        setBlockHeadingState(blockUuid, 'lock')
+        await setBlockHeadingState(blockUuid, 'lock')
         logseq.UI.showMsg('已锁定当前编号状态', 'success', { timeout: 1500 })
     }
     await cleanupBlockProperty(blockUuid)
@@ -274,11 +274,11 @@ const handleRepeat = async (blockUuid: string) => {
 
     const current = getBlockHeadingState(blockUuid)
     if (current === 'repeat') {
-        setBlockHeadingState(blockUuid, null)
+        await setBlockHeadingState(blockUuid, null)
         logseq.UI.showMsg('已取消重复编号', 'info', { timeout: 1500 })
     } else {
         // 仅设置状态标记，编号算法会在 retriggerNumbering 中自动处理
-        setBlockHeadingState(blockUuid, 'repeat')
+        await setBlockHeadingState(blockUuid, 'repeat')
         logseq.UI.showMsg('已设为重复编号（动态跟随前一个标题）', 'success', { timeout: 2000 })
     }
     await cleanupBlockProperty(blockUuid)
