@@ -303,7 +303,14 @@ const removeNumberFromBlock = async (blockUuid: string) => {
     if (!hashMatch) return
 
     const hashTags = hashMatch[1]
-    let textOnly = firstLine.replace(/^#{1,6}\s+/, '').replace(/^[\d.]+\s+/, '')
+    let textOnly = firstLine.replace(/^#{1,6}\s+/, '')
+    // 移除编号：支持多种格式
+    //   "1.2.3 标题"    → 层级编号（1-3级）
+    //   "1、标题"        → 四级编号（数字+顿号，无空格）
+    //   "1、 标题"       → 四级编号（数字+顿号，有空格）
+    textOnly = textOnly
+        .replace(/^[\d.]+\s+/, '')      // 匹配 "1.2.3 " 格式
+        .replace(/^\d+、\s*/, '')        // 匹配 "1、" 或 "1、 " 格式
 
     if (textOnly.trim()) {
         const newFirstLine = `${hashTags} ${textOnly}`
