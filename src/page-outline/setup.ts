@@ -119,9 +119,8 @@ export const handleTocSettingsChanged = async (newSet: LSPluginBaseInfo['setting
         return true
     }
 
-    // 过滤词列表或页面缩放设置变更时，刷新大纲内容
-    if ((oldSet[settingKeys.toc.tocRemoveWordList] !== newSet[settingKeys.toc.tocRemoveWordList])
-        || (oldSet[settingKeys.toc.booleanAsZoomPage] !== newSet[settingKeys.toc.booleanAsZoomPage])) {
+    // 页面缩放设置变更时，刷新大纲内容
+    if (oldSet[settingKeys.toc.booleanAsZoomPage] !== newSet[settingKeys.toc.booleanAsZoomPage]) {
         await refreshPageHeaders(getCurrentPageOriginalName())
     }
     return false

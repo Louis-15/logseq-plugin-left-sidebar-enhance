@@ -16,16 +16,6 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
         })
 
     if (cfg[settingKeys.toc.master] === true) {
-        list.push(
-            {
-                key: settingKeys.toc.tocRemoveWordList,
-                title: '要从标题列表中排除的单词',
-                type: 'string',
-                inputAs: 'textarea',
-                default: '',
-                description: '输入要排除的词，用换行符分隔。',
-            })
-
         if (logseqVersionMd) {
 
             list.push(

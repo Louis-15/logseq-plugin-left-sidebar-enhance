@@ -6,7 +6,7 @@ export const settingKeys = {
                           highlightBlockOnHover: 'highlightBlockOnHover',
                           highlightHeaderOnHover: 'highlightHeaderOnHover',
                           enableJournalsList: 'enableJournalsList',
-                          tocRemoveWordList: 'tocRemoveWordList',
+
                           // Heading numbering - file update mode
                           headingNumberFileEnable: 'headingNumberFileEnable',
                           // 以下键已废弃（白名单现在存储在图谱内配置页面中）

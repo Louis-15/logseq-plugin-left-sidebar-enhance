@@ -38,10 +38,3 @@ export const removeMarkdownImage = (blockContent: string) => removePattern(block
 //   return blockContent
 // }
 
-export const removeListWords = (blockContent: string, wordList: string): string =>
-  wordList
-    .split("\n")
-    .filter(word => word !== "")
-    .map(word => new RegExp(word, "g"))
-    .reduce((content, pattern) =>
-      content.replaceAll(pattern, ""), blockContent)
