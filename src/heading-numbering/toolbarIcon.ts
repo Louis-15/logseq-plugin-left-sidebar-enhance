@@ -10,6 +10,7 @@ import { createElementWithAttributes } from '../util/domUtils'
 import { isPageActive, applyHeadingNumbersToPage, togglePageState } from './index'
 
 let currentPageName: string = ''
+let currentPageUuid: string = ''
 let enableIcon: HTMLElement | null = null
 let cleanupIcon: HTMLElement | null = null
 let isHandlingClick = false
@@ -17,10 +18,11 @@ let isHandlingClick = false
 /**
  * 创建工具栏按钮
  */
-export const createToolbarIcon = (pageName: string) => {
+export const createToolbarIcon = (pageName: string, pageUuid: string) => {
     // 移除已有按钮
     removeToolbarIcon()
     currentPageName = pageName
+    currentPageUuid = pageUuid
 
     // 查找工具栏区域
     let toolbar = parent.document.querySelector('#head>.r') as HTMLElement
@@ -32,7 +34,7 @@ export const createToolbarIcon = (pageName: string) => {
         return
     }
 
-    const isActive = isPageActive(pageName)
+    const isActive = isPageActive(pageUuid)
 
     // === 按钮1：开启编号 ===
     enableIcon = createElementWithAttributes('a', {
@@ -67,10 +69,10 @@ export const createToolbarIcon = (pageName: string) => {
         if (isHandlingClick) return
         isHandlingClick = true
         try {
-            const currentActive = isPageActive(currentPageName)
+            const currentActive = isPageActive(currentPageUuid)
             if (!currentActive) {
                 // 开启编号
-                await togglePageState(currentPageName)
+                await togglePageState(currentPageName, currentPageUuid)
                 await applyHeadingNumbersToPage(currentPageName)
                 updateToolbarIconStates(true)
                 await logseq.UI.showMsg('✅ 已开启当前页面的自动编号', 'success', { timeout: 2000 })
@@ -117,10 +119,10 @@ export const createToolbarIcon = (pageName: string) => {
         if (isHandlingClick) return
         isHandlingClick = true
         try {
-            const currentActive = isPageActive(currentPageName)
+            const currentActive = isPageActive(currentPageUuid)
             if (currentActive) {
                 // 先取消授权
-                await togglePageState(currentPageName)
+                await togglePageState(currentPageName, currentPageUuid)
             }
             // togglePageState 在取消授权时会自动执行 cleanup
             updateToolbarIconStates(false)
@@ -179,15 +181,16 @@ export const removeToolbarIcon = () => {
 /**
  * 页面切换时更新工具栏按钮
  */
-export const updateToolbarIcon = (pageName: string) => {
+export const updateToolbarIcon = (pageName: string, pageUuid: string) => {
     currentPageName = pageName
+    currentPageUuid = pageUuid
 
     if (!enableIcon) {
-        createToolbarIcon(pageName)
+        createToolbarIcon(pageName, pageUuid)
         return
     }
 
-    const isActive = isPageActive(pageName)
+    const isActive = isPageActive(pageUuid)
     updateToolbarIconStates(isActive)
 }
 

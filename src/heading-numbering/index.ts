@@ -3,7 +3,7 @@
  * Provides hierarchical heading numbering with display-only and file-update modes
  */
 
-import { booleanLogseqVersionMd } from '..'
+import { booleanLogseqVersionMd, getCurrentPageUuid } from '..'
 import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTocBlock } from '../page-outline/findHeaders'
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
@@ -90,32 +90,34 @@ const detectFileBasedGraph = async (): Promise<boolean> => {
 /**
  * 判断指定页面是否应当启用自动编号
  * - 全局自动编号：所有页面均启用
- * - 单页面手动开关：仅白名单中的页面启用
+ * - 单页面手动开关：仅白名单中的页面启用（通过页面 UUID 比对）
  * - 关闭自动编号：所有页面均不启用
  */
-export const isPageActive = (pageName: string): boolean => {
+export const isPageActive = (pageUuid: string): boolean => {
     const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
     if (mode === '全局自动编号') return true
     if (mode === '关闭自动编号' || mode === false || !mode) return false
 
-    // 单页面手动开关模式：查询白名单
-    return isPageWhitelisted(pageName)
+    // 单页面手动开关模式：通过页面 UUID 查询白名单
+    return isPageWhitelisted(pageUuid)
 }
 
 /**
  * 切换页面的自动编号状态（白名单模式）
- * 开启时添加到白名单，关闭时移除并清除已有编号
+ * 开启时添加到白名单（使用 UUID），关闭时移除并清除已有编号
+ * @param pageName 页面名称（用于 Editor API 操作）
+ * @param pageUuid 页面 UUID（用于白名单存储）
  */
-export const togglePageState = async (pageName: string): Promise<{ newState: boolean }> => {
-    const currentState = isPageActive(pageName)
+export const togglePageState = async (pageName: string, pageUuid: string): Promise<{ newState: boolean }> => {
+    const currentState = isPageActive(pageUuid)
     const newState = !currentState
 
     if (newState) {
-        // 添加到白名单
-        await addPageToWhitelist(pageName)
+        // 添加到白名单（使用 UUID）
+        await addPageToWhitelist(pageUuid)
     } else {
-        // 从白名单移除，并清除该页面的编号文本
-        await removePageFromWhitelist(pageName)
+        // 从白名单移除（使用 UUID），并清除该页面的编号文本（使用 pageName）
+        await removePageFromWhitelist(pageUuid)
         const oldDelimiter = '.'
         await cleanupPageHeadingNumbers(pageName, oldDelimiter)
     }
@@ -172,8 +174,8 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
         return
     }
 
-    // Check if page is active
-    if (!isPageActive(pageName)) {
+    // Check if page is active（通过缓存的页面 UUID 判断）
+    if (!isPageActive(getCurrentPageUuid())) {
         return
     }
 
@@ -508,18 +510,19 @@ export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet:
         const { removeToolbarIcon, updateToolbarIcon } = await import('./toolbarIcon')
         const currentPage = await logseq.Editor.getCurrentPage()
         const pageName = currentPage ? ((currentPage as any).originalName || (currentPage as any).name || '') as string : ''
+        const pageUuid = getCurrentPageUuid()
 
         if (newMode === '单页面手动开关') {
             // 切到手动模式：显示工具栏按钮
-            if (pageName) updateToolbarIcon(pageName)
+            if (pageName) updateToolbarIcon(pageName, pageUuid)
         } else {
             // 全局或关闭模式：隐藏工具栏按钮
             removeToolbarIcon()
         }
 
         // 更新 CSS 类名
-        if (pageName) {
-            const enabled = isPageActive(pageName)
+        if (pageUuid) {
+            const enabled = isPageActive(pageUuid)
             if (enabled) {
                 parent.document.documentElement.classList.add('lse-heading-enabled')
             } else {

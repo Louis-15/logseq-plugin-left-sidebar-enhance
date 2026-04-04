@@ -2,7 +2,7 @@
  * 编号配置管理模块（图谱级隔离存储）
  *
  * 将以下两类数据存储在 Logseq 图谱内的一个专用配置页面中：
- * 1. 白名单（whitelist）：哪些页面启用了自动编号
+ * 1. 白名单（whitelist）：哪些页面启用了自动编号（存储页面 UUID，不受重命名影响）
  * 2. 块状态（blockStates）：各标题块的编号行为（skip/lock/repeat）
  *
  * 页面名称：lse-heading-numbering-config
@@ -11,10 +11,11 @@
  * 1. 数据天然按图谱隔离（每个图谱有自己的页面）
  * 2. 配置文件保存在图谱目录的 pages/ 下，可跟随微力同步等工具自动同步
  * 3. 不依赖 Node.js 文件系统权限，纯通过 Logseq Editor API 读写
+ * 4. 白名单使用 UUID 标识页面，重命名笔记后编号配置不会丢失
  *
  * JSON 结构：
  * {
- *   "whitelist": ["页面A", "页面B"],
+ *   "whitelist": ["page-uuid-1", "page-uuid-2"],
  *   "blockStates": {
  *     "block-uuid-1": "skip",
  *     "block-uuid-2": "lock",
@@ -28,7 +29,7 @@ const CONFIG_PAGE_NAME = 'lse-heading-numbering-config'
 
 // ================ 内存缓存 ================
 
-// 白名单缓存
+// 白名单缓存（存储页面 UUID）
 let cachedWhitelist: Set<string> = new Set()
 // 块状态缓存：uuid → 状态字符串
 let cachedBlockStates: Map<string, string> = new Map()
@@ -69,9 +70,14 @@ export const loadConfigFromPage = async (): Promise<void> => {
             if (jsonMatch) {
                 try {
                     const data = JSON.parse(jsonMatch[1].trim())
-                    // 加载白名单
+                    // 加载白名单（仅保留 UUID 格式的条目，忽略旧版的 pageName 格式）
                     if (Array.isArray(data.whitelist)) {
-                        data.whitelist.forEach((name: string) => cachedWhitelist.add(name))
+                        data.whitelist.forEach((entry: string) => {
+                            // UUID 格式通常包含连字符且长度 >= 32，pageName 则不会
+                            if (isUuidFormat(entry)) {
+                                cachedWhitelist.add(entry)
+                            }
+                        })
                     }
                     // 加载块状态
                     if (data.blockStates && typeof data.blockStates === 'object') {
@@ -92,7 +98,11 @@ export const loadConfigFromPage = async (): Promise<void> => {
                 const data = JSON.parse(content.trim())
                 if (data.whitelist || data.blockStates) {
                     if (Array.isArray(data.whitelist)) {
-                        data.whitelist.forEach((name: string) => cachedWhitelist.add(name))
+                        data.whitelist.forEach((entry: string) => {
+                            if (isUuidFormat(entry)) {
+                                cachedWhitelist.add(entry)
+                            }
+                        })
                     }
                     if (data.blockStates && typeof data.blockStates === 'object') {
                         for (const [uuid, state] of Object.entries(data.blockStates)) {
@@ -171,30 +181,30 @@ const saveConfig = async (): Promise<void> => {
 // ================ 白名单操作 ================
 
 /**
- * 判断指定页面是否在白名单中
+ * 判断指定页面是否在白名单中（通过页面 UUID 比对）
  */
-export const isPageWhitelisted = (pageName: string): boolean => {
-    return cachedWhitelist.has(pageName)
+export const isPageWhitelisted = (pageUuid: string): boolean => {
+    return cachedWhitelist.has(pageUuid)
 }
 
 /**
- * 将页面添加到白名单
+ * 将页面添加到白名单（使用页面 UUID）
  */
-export const addPageToWhitelist = async (pageName: string): Promise<void> => {
-    if (cachedWhitelist.has(pageName)) return
-    cachedWhitelist.add(pageName)
+export const addPageToWhitelist = async (pageUuid: string): Promise<void> => {
+    if (cachedWhitelist.has(pageUuid)) return
+    cachedWhitelist.add(pageUuid)
     await saveConfig()
-    console.log('[LSE] 已添加到白名单:', pageName)
+    console.log('[LSE] 已添加到白名单 (UUID):', pageUuid)
 }
 
 /**
- * 将页面从白名单移除
+ * 将页面从白名单移除（使用页面 UUID）
  */
-export const removePageFromWhitelist = async (pageName: string): Promise<void> => {
-    if (!cachedWhitelist.has(pageName)) return
-    cachedWhitelist.delete(pageName)
+export const removePageFromWhitelist = async (pageUuid: string): Promise<void> => {
+    if (!cachedWhitelist.has(pageUuid)) return
+    cachedWhitelist.delete(pageUuid)
     await saveConfig()
-    console.log('[LSE] 已从白名单移除:', pageName)
+    console.log('[LSE] 已从白名单移除 (UUID):', pageUuid)
 }
 
 /**
@@ -234,6 +244,66 @@ export const setBlockState = async (blockUuid: string, state: string | null): Pr
  */
 export const isConfigLoaded = (): boolean => {
     return isLoaded
+}
+
+/**
+ * 判断字符串是否为 UUID 格式
+ * UUID 包含连字符且长度 >= 32（如 "6f1a3c4b-..."）
+ * pageName 通常是中文或英文标题，不包含连字符或长度远小于 32
+ */
+const isUuidFormat = (str: string): boolean => {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+}
+
+// ================ 孤儿数据清理 ================
+
+/**
+ * 清理已不存在的页面和块的配置数据
+ * 在插件启动 15 秒后延时调用，不阻塞 Logseq 启动
+ * 逐个检查 UUID 是否仍然存在于图谱中，不存在则从缓存中移除
+ */
+export const cleanUpOrphanedData = async (): Promise<void> => {
+    let removedPages = 0
+    let removedBlocks = 0
+
+    // 1. 清理白名单中已删除的页面
+    const pageUuids = [...cachedWhitelist]
+    for (const uuid of pageUuids) {
+        try {
+            const page = await logseq.Editor.getPage(uuid)
+            if (!page) {
+                cachedWhitelist.delete(uuid)
+                removedPages++
+            }
+        } catch {
+            // 查询失败视为不存在
+            cachedWhitelist.delete(uuid)
+            removedPages++
+        }
+    }
+
+    // 2. 清理 blockStates 中已删除的块
+    const blockUuids = [...cachedBlockStates.keys()]
+    for (const uuid of blockUuids) {
+        try {
+            const block = await logseq.Editor.getBlock(uuid)
+            if (!block) {
+                cachedBlockStates.delete(uuid)
+                removedBlocks++
+            }
+        } catch {
+            cachedBlockStates.delete(uuid)
+            removedBlocks++
+        }
+    }
+
+    // 3. 如果有清理则保存
+    if (removedPages > 0 || removedBlocks > 0) {
+        await saveConfig()
+        console.log(`[LSE] 孤儿数据清理完成 — 移除了 ${removedPages} 个失效页面白名单, ${removedBlocks} 个失效块状态`)
+    } else {
+        console.log('[LSE] 孤儿数据清理完成 — 无需清理')
+    }
 }
 
 // 保持向后兼容的别名

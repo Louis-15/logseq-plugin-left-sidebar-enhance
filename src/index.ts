@@ -17,7 +17,8 @@ import { loadConfigFromPage } from './heading-numbering/pageWhitelist'
 
 // 当前页面原始名称（全局状态，供各模块读取）
 let currentPageOriginalName: PageEntity["originalName"] = ""
-// let currentPageUuid: PageEntity["uuid"] = ""
+// 当前页面 UUID（用于白名单比对，不受重命名影响）
+let currentPageUuid: string = ""
 
 // Logseq 版本号字符串，用于版本兼容性检查
 let logseqVersion: string = ""
@@ -31,11 +32,14 @@ export const booleanLogseqVersionMd = () => logseqVersionMd
 /** 更新当前页面状态（由路由检查模块在页面切换时调用） */
 export const updateCurrentPage = async (pageName: string, pageUuid: PageEntity["uuid"]) => {
   currentPageOriginalName = pageName
-  // currentPageUuid = pageUuid
+  currentPageUuid = typeof pageUuid === 'string' ? pageUuid : String(pageUuid)
 }
 
 /** 获取当前页面原始名称 */
 export const getCurrentPageOriginalName = () => currentPageOriginalName
+
+/** 获取当前页面 UUID */
+export const getCurrentPageUuid = () => currentPageUuid
 
 
 
@@ -75,6 +79,16 @@ const main = async () => {
 
   // === 层级标题自动编号初始化 ===
   await initHeadingNumbering()
+
+  // === 延时 15 秒后执行孤儿数据清理（不阻塞启动） ===
+  setTimeout(async () => {
+      try {
+          const { cleanUpOrphanedData } = await import('./heading-numbering/pageWhitelist')
+          await cleanUpOrphanedData()
+      } catch (e) {
+          console.warn('[LSE] 孤儿数据清理失败:', e)
+      }
+  }, 15000)
 
   // === 标题编号右键菜单（跳过/锁定/重号）注册 ===
   initHeadingButtons()
@@ -184,12 +198,12 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
         const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
         // 只在“单页面手动开关”模式下显示工具栏按钮
         if (mode === '单页面手动开关') {
-            updateToolbarIcon(pageName)
+            updateToolbarIcon(pageName, currentPageUuid)
         } else {
             removeToolbarIcon()
         }
 
-        const enabled = isPageActive(pageName)
+        const enabled = isPageActive(currentPageUuid)
         if (enabled) {
             parent.document.documentElement.classList.add('lse-heading-enabled')
         } else {
@@ -198,7 +212,7 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
     }
 
     // 3. 若页面已启用编号（全局或手动白名单），自动应用编号
-    if (isPageActive(pageName)) {
+    if (isPageActive(currentPageUuid)) {
         await applyHeadingNumbersToPage(pageName)
     }
   }, 50)
