@@ -100,7 +100,7 @@ export const createToolbarIcon = (pageName: string, pageUuid: string) => {
         `
     })
 
-    // 清除编号图标：编号列表 + 红色×叠在上方偏右
+    // 清除编号图标：底层编号列表 + 上层覆盖整个区域的红色大×
     cleanupIcon.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <text x="1" y="7" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">1</text>
@@ -109,8 +109,8 @@ export const createToolbarIcon = (pageName: string, pageUuid: string) => {
             <line x1="9" y1="12" x2="21" y2="12" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
             <text x="1" y="23" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">3</text>
             <line x1="9" y1="20" x2="21" y2="20" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
-            <line x1="13" y1="6" x2="21" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
-            <line x1="21" y1="6" x2="13" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="3" y1="3" x2="21" y2="21" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
+            <line x1="21" y1="3" x2="3" y2="21" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/>
         </svg>
     `
 

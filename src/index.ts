@@ -77,6 +77,10 @@ const main = async () => {
   // === 收藏夹和历史记录去重 ===
   loadFavAndRecent()
 
+  // === 标题编号右键菜单（跳过/锁定/重号）注册 ===
+  // 【重要】菜单注册必须在所有异步操作之前完成，否则可能因竞态掉注册
+  initHeadingButtons()
+
   // === 层级标题自动编号初始化 ===
   await initHeadingNumbering()
 
@@ -89,9 +93,6 @@ const main = async () => {
           console.warn('[LSE] 孤儿数据清理失败:', e)
       }
   }, 15000)
-
-  // === 标题编号右键菜单（跳过/锁定/重号）注册 ===
-  initHeadingButtons()
 
   // === 标题等级自动调整初始化 ===
   initAutoHeadingLevel()
