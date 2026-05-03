@@ -11,6 +11,31 @@ import { loadConfigFromPage, isPageWhitelisted, addPageToWhitelist, removePageFr
 
 let isFileBasedGraph = false
 
+// === 暂停状态管理 ===
+// 记录哪些页面当前处于"暂停自动编号和监控"状态
+// 暂停时：保留已有编号，停止后台指示器扫描，页面切换时不自动编号
+const pausedPages: Set<string> = new Set()
+
+/** 判断指定页面是否处于暂停状态 */
+export const isPagePaused = (pageUuid: string): boolean => {
+    return pausedPages.has(pageUuid)
+}
+
+/** 暂停页面的自动编号和监控（保留已有编号） */
+export const pausePageNumbering = (pageUuid: string) => {
+    pausedPages.add(pageUuid)
+}
+
+/** 恢复页面的自动编号和监控 */
+export const resumePageNumbering = (pageUuid: string) => {
+    pausedPages.delete(pageUuid)
+}
+
+/** 页面是否应当执行自动编号：在白名单中 且 未被暂停 */
+export const shouldAutoNumber = (pageUuid: string): boolean => {
+    return isPageActive(pageUuid) && !isPagePaused(pageUuid)
+}
+
 // === 块编号状态管理（存储在图谱配置页面中，按图谱隔离）===
 
 /**
@@ -174,8 +199,8 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
         return
     }
 
-    // Check if page is active（通过缓存的页面 UUID 判断）
-    if (!isPageActive(getCurrentPageUuid())) {
+    // Check if page is active and not paused（通过缓存的页面 UUID 判断）
+    if (!shouldAutoNumber(getCurrentPageUuid())) {
         return
     }
 

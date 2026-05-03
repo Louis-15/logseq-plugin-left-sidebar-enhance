@@ -9,7 +9,7 @@ import { settingKeys } from './settings/keys'
 import { initSettingsDispatcher } from './settings/onSettingsChanged'
 import { removeContainer } from './util/lib'
 import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/sethyuan/logseq-l10n
-import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers, isPageActive } from './heading-numbering'
+import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers, isPageActive, shouldAutoNumber } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon, createToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
@@ -212,8 +212,8 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
         }
     }
 
-    // 3. 若页面已启用编号（全局或手动白名单），自动应用编号
-    if (isPageActive(currentPageUuid)) {
+    // 3. 若页面已启用编号且未被暂停，自动应用编号
+    if (shouldAutoNumber(currentPageUuid)) {
         await applyHeadingNumbersToPage(pageName)
     }
   }, 50)

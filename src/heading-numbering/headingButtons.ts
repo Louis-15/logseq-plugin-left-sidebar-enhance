@@ -8,6 +8,7 @@
 import { getBlockHeadingState, setBlockHeadingState, applyHeadingNumbersToPage } from './index'
 
 let scanTimer: any = null
+let isIndicatorScanPaused = false
 const INDICATOR_CLASS = 'lse-heading-indicator'
 
 /**
@@ -49,6 +50,51 @@ export const initHeadingButtons = () => {
 }
 
 // ==================== 状态指示器逻辑 ====================
+
+/**
+ * 暂停指示器扫描并清理所有指示器 DOM
+ * 释放后台监控资源，解决性能卡顿问题
+ */
+export const pauseIndicatorScan = () => {
+    if (scanTimer) {
+        clearInterval(scanTimer)
+        scanTimer = null
+    }
+    isIndicatorScanPaused = true
+    removeAllIndicators()
+}
+
+/**
+ * 恢复指示器扫描
+ */
+export const resumeIndicatorScan = () => {
+    isIndicatorScanPaused = false
+    if (!scanTimer) {
+        scanTimer = setInterval(() => scanAndInjectIndicators(), 500)
+    }
+    // 立即执行一次扫描
+    setTimeout(() => scanAndInjectIndicators(), 200)
+}
+
+/** 当前指示器扫描是否活跃 */
+export const isScanActive = () => !isIndicatorScanPaused
+
+/**
+ * 清理所有已注入的指示器 DOM 元素
+ */
+const removeAllIndicators = () => {
+    try {
+        const doc = parent.document
+        const layer = doc.querySelector('.lse-indicator-layer')
+        if (layer) {
+            layer.innerHTML = ''
+        }
+    } catch (e) {
+        // ignore cross-origin errors
+    }
+}
+
+// ==================== 状态指示器逻辑（注入和定位）====================
 
 /**
  * 将指示器样式注入到 parent.document.head（主页面）
@@ -378,4 +424,6 @@ const findPrevSiblingNumber = (blocks: any[], targetUuid: string): string | null
  */
 export const cleanupHeadingButtons = () => {
     if (scanTimer) clearInterval(scanTimer)
+    scanTimer = null
+    removeAllIndicators()
 }
