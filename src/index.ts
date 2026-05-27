@@ -9,8 +9,8 @@ import { settingKeys } from './settings/keys'
 import { initSettingsDispatcher } from './settings/onSettingsChanged'
 import { removeContainer } from './util/lib'
 import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/sethyuan/logseq-l10n
-import { initHeadingNumbering, applyHeadingNumbersToPage, cleanupPageHeadingNumbers, isPageActive, shouldAutoNumber } from './heading-numbering'
-import { removeToolbarIcon, updateToolbarIcon, createToolbarIcon } from './heading-numbering/toolbarIcon'
+import { initHeadingNumbering } from './heading-numbering'
+import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
 import { loadConfigFromPage } from './heading-numbering/pageWhitelist'
@@ -107,114 +107,36 @@ const main = async () => {
     parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
-  // === 图谱切换时重置状态并重新加载白名单 ===
+  // === 图谱切换时重置状态并重新加载块状态配置 ===
   logseq.App.onCurrentGraphChanged(async () => {
     currentPageOriginalName = ""
     logseqVersionMd = await checkLogseqVersion()
-    // 图谱切换后重新加载新图谱的白名单
+    // 图谱切换后重新加载新图谱的块状态
     await loadConfigFromPage()
   })
 
 }/* end_main */
 
 
-// ===================== 数据库变更监听（TOC 实时刷新） =====================
-
-// 防抖锁：TOC 更新过程中如果再次触发变更，则跳过后续处理
-let processingBlockChanged: boolean = false
-
-// 确保 onChanged 监听器只注册一次的标志位
-export let onBlockChangedOnce: boolean = false
-
-/**
- * 注册 Logseq 数据库变更监听器
- * 当包含标题属性的块发生更新时，自动刷新侧边栏大纲
- * 使用 onBlockChangedOnce 标志位确保只注册一次，避免重复监听
- */
-export const onBlockChanged = () => {
-
-  if (onBlockChangedOnce === true)
-    return
-  onBlockChangedOnce = true
-  logseq.DB.onChanged(async ({ blocks }) => {
-
-    if (processingBlockChanged === true
-      || currentPageOriginalName === ""
-      || logseq.settings!.booleanLeftTOC === false)
-      return
-    // 在变更的块中查找含有 heading 属性的块（使用 find 而非 some 以获取 uuid）
-    const findBlock = blocks.find((block) => block.properties?.heading) as { uuid: BlockEntity["uuid"] } | null
-    if (!findBlock) return
-    const uuid = findBlock ? findBlock!.uuid : null
-    updateToc()
-
-    setTimeout(() => {
-      // 为该特定块注册单独的变更回调，实现精细化监听
-      if (uuid)
-        logseq.DB.onBlockChanged(uuid, () => updateToc())
-    }, 200)
-
-  })
-}
-
-/** 防抖更新 TOC：300ms 内只执行一次刷新 */
-const updateToc = () => {
-  if (processingBlockChanged === true)
-    return
-  processingBlockChanged = true
-  setTimeout(() => {
-    refreshPageHeaders(currentPageOriginalName)
-    processingBlockChanged = false
-  }, 300)
-}
-
-
-
-// 页面切换处理的防抖锁
-let processingOnPageChanged: boolean = false
 
 /**
  * 页面切换/加载时的核心回调函数
- * 负责刷新 TOC、更新工具栏图标状态、应用自动编号等
+ * 负责刷新 TOC、更新工具栏按钮
+ * 纯按钮触发模式，不自动编号，不注册后台监听
  * @param pageName - 目标页面名称
  * @param flag - 可选的缩放信息（是否处于缩放模式及对应块 UUID）
  */
 export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: boolean, zoomInUuid: BlockEntity["uuid"] }) => {
-
-  if (processingOnPageChanged === true)
-    return
-  processingOnPageChanged = true
-
-  // 300ms 后自动释放防抖锁，防止异常情况下永久锁死
-  setTimeout(() =>
-    processingOnPageChanged = false, 300)
 
   setTimeout(async () => {
     // 1. 刷新侧边栏大纲列表
     if (logseq.settings?.[settingKeys.toc.master] === true)
       await refreshPageHeaders(pageName, flag ? flag : undefined)
 
-    // 2. 更新工具栏编号授权图标状态（仅 Markdown 模式）
+    // 2. 显示工具栏「重新编号」按钮
     if (logseqVersionMd === true) {
-        const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
-        // 只在“单页面手动开关”模式下显示工具栏按钮
-        if (mode === '单页面手动开关') {
-            updateToolbarIcon(pageName, currentPageUuid)
-        } else {
-            removeToolbarIcon()
-        }
-
-        const enabled = isPageActive(currentPageUuid)
-        if (enabled) {
-            parent.document.documentElement.classList.add('lse-heading-enabled')
-        } else {
-            parent.document.documentElement.classList.remove('lse-heading-enabled')
-        }
-    }
-
-    // 3. 若页面已启用编号且未被暂停，自动应用编号
-    if (shouldAutoNumber(currentPageUuid)) {
-        await applyHeadingNumbersToPage(pageName)
+        updateToolbarIcon(pageName, currentPageUuid)
+        parent.document.documentElement.classList.add('lse-heading-enabled')
     }
   }, 50)
 

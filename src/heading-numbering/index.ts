@@ -3,38 +3,13 @@
  * Provides hierarchical heading numbering with display-only and file-update modes
  */
 
-import { booleanLogseqVersionMd, getCurrentPageUuid } from '..'
+import { booleanLogseqVersionMd } from '..'
 import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTocBlock } from '../page-outline/findHeaders'
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
-import { loadConfigFromPage, isPageWhitelisted, addPageToWhitelist, removePageFromWhitelist, getBlockState, setBlockState } from './pageWhitelist'
+import { loadConfigFromPage, getBlockState, setBlockState } from './pageWhitelist'
 
 let isFileBasedGraph = false
-
-// === 暂停状态管理 ===
-// 记录哪些页面当前处于"暂停自动编号和监控"状态
-// 暂停时：保留已有编号，停止后台指示器扫描，页面切换时不自动编号
-const pausedPages: Set<string> = new Set()
-
-/** 判断指定页面是否处于暂停状态 */
-export const isPagePaused = (pageUuid: string): boolean => {
-    return pausedPages.has(pageUuid)
-}
-
-/** 暂停页面的自动编号和监控（保留已有编号） */
-export const pausePageNumbering = (pageUuid: string) => {
-    pausedPages.add(pageUuid)
-}
-
-/** 恢复页面的自动编号和监控 */
-export const resumePageNumbering = (pageUuid: string) => {
-    pausedPages.delete(pageUuid)
-}
-
-/** 页面是否应当执行自动编号：在白名单中 且 未被暂停 */
-export const shouldAutoNumber = (pageUuid: string): boolean => {
-    return isPageActive(pageUuid) && !isPagePaused(pageUuid)
-}
 
 // === 块编号状态管理（存储在图谱配置页面中，按图谱隔离）===
 
@@ -86,13 +61,13 @@ const extractGeneralNumber = (content: string): string | null => {
 
 /**
  * 初始化标题编号功能
- * 检测图谱类型并加载编号配置（白名单 + 块状态）
+ * 检测图谱类型并加载编号配置（块状态）
  */
 export const initHeadingNumbering = async () => {
     // 检测当前图谱是否为基于文件的本地图谱
     isFileBasedGraph = await detectFileBasedGraph()
 
-    // 从图谱的配置页面加载白名单和块状态
+    // 从沙箱存储加载块状态
     await loadConfigFromPage()
 }
 
@@ -113,41 +88,11 @@ const detectFileBasedGraph = async (): Promise<boolean> => {
 // display-only numbering and related CSS removed
 
 /**
- * 判断指定页面是否应当启用自动编号
- * - 全局自动编号：所有页面均启用
- * - 单页面手动开关：仅白名单中的页面启用（通过页面 UUID 比对）
- * - 关闭自动编号：所有页面均不启用
+ * 判断编号功能是否可用
+ * 纯按钮触发模式，始终可用
  */
-export const isPageActive = (pageUuid: string): boolean => {
-    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
-    if (mode === '全局自动编号') return true
-    if (mode === '关闭自动编号' || mode === false || !mode) return false
-
-    // 单页面手动开关模式：通过页面 UUID 查询白名单
-    return isPageWhitelisted(pageUuid)
-}
-
-/**
- * 切换页面的自动编号状态（白名单模式）
- * 开启时添加到白名单（使用 UUID），关闭时移除并清除已有编号
- * @param pageName 页面名称（用于 Editor API 操作）
- * @param pageUuid 页面 UUID（用于白名单存储）
- */
-export const togglePageState = async (pageName: string, pageUuid: string): Promise<{ newState: boolean }> => {
-    const currentState = isPageActive(pageUuid)
-    const newState = !currentState
-
-    if (newState) {
-        // 添加到白名单（使用 UUID）
-        await addPageToWhitelist(pageUuid)
-    } else {
-        // 从白名单移除（使用 UUID），并清除该页面的编号文本（使用 pageName）
-        await removePageFromWhitelist(pageUuid)
-        const oldDelimiter = '.'
-        await cleanupPageHeadingNumbers(pageName, oldDelimiter)
-    }
-
-    return { newState }
+export const isPageActive = (_pageUuid: string): boolean => {
+    return true
 }
 
 /**
@@ -189,18 +134,7 @@ const extractOldNumber = (content: string, oldDelimiter: string): { number: stri
 export const applyHeadingNumbersToPage = async (pageName: string): Promise<void> => {
     // Only work on file-based graphs
     if (!isFileBasedGraph) {
-        console.warn('Heading numbering file-update mode is only available for file-based graphs')
-        return
-    }
-
-    // Check if file-update mode is enabled
-    const mode = logseq.settings?.[settingKeys.toc.headingNumberFileEnable]
-    if (mode === '关闭自动编号' || mode === false || !mode) {
-        return
-    }
-
-    // Check if page is active and not paused（通过缓存的页面 UUID 判断）
-    if (!shouldAutoNumber(getCurrentPageUuid())) {
+        console.warn('Heading numbering is only available for file-based graphs')
         return
     }
 
@@ -522,54 +456,10 @@ const extractNumberFromHeading = (firstLine: string, delimiter: string): string 
 
 /**
  * 处理编号相关设置变更
- * 包括模式切换时工具栏按钮的即时显隐
+ * 纯按钮触发模式下，无需处理模式切换逻辑，仅当 autoHeadingLevel 变更时需要重新加载设置面板
  */
-export const handleHeadingNumberingSettingsChanged = async (newSet: any, oldSet: any): Promise<boolean> => {
-    // display-only numbering and heading level marks removed
-
-    const oldMode = oldSet[settingKeys.toc.headingNumberFileEnable]
-    const newMode = newSet[settingKeys.toc.headingNumberFileEnable]
-
-    // 模式变更时，即时更新工具栏按钮显隐
-    if (oldMode !== newMode) {
-        const { removeToolbarIcon, updateToolbarIcon } = await import('./toolbarIcon')
-        const currentPage = await logseq.Editor.getCurrentPage()
-        const pageName = currentPage ? ((currentPage as any).originalName || (currentPage as any).name || '') as string : ''
-        const pageUuid = getCurrentPageUuid()
-
-        if (newMode === '单页面手动开关') {
-            // 切到手动模式：显示工具栏按钮
-            if (pageName) updateToolbarIcon(pageName, pageUuid)
-        } else {
-            // 全局或关闭模式：隐藏工具栏按钮
-            removeToolbarIcon()
-        }
-
-        // 更新 CSS 类名
-        if (pageUuid) {
-            const enabled = isPageActive(pageUuid)
-            if (enabled) {
-                parent.document.documentElement.classList.add('lse-heading-enabled')
-            } else {
-                parent.document.documentElement.classList.remove('lse-heading-enabled')
-            }
-        }
-    }
-
-    // File-update mode changes
-    if (oldMode !== newMode) {
-        // Re-apply numbering to current page if enabled
-        const currentPage = await logseq.Editor.getCurrentPage()
-        const mode = newSet[settingKeys.toc.headingNumberFileEnable]
-        if (currentPage && (mode === '全局自动编号' || mode === '单页面手动开关' || mode === true)) {
-            const pageName = (currentPage.originalName || currentPage.name || '') as string
-            if (pageName) {
-                await applyHeadingNumbersToPage(pageName)
-            }
-        }
-    }
-    if (oldMode !== newMode)
-        return true
+export const handleHeadingNumberingSettingsChanged = async (_newSet: any, _oldSet: any): Promise<boolean> => {
+    // 纯按钮触发模式，无需自动响应设置变更
     return false
 }
 

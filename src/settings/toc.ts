@@ -9,25 +9,14 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
     list.push(
         {// Section header
             key: settingKeys.toc.heading,
-            title: '二、自动编号相关',
+            title: '二、自动标题等级调整',
             type: 'heading',
             default: null,
-            description: '所有跟自动大纲编号相关的设置',
+            description: '点击标题上方的「重新编号」按钮手动触发编号，此为纯辅助设置',
         })
 
     if (cfg[settingKeys.toc.master] === true) {
         if (logseqVersionMd) {
-
-            list.push(
-                {
-                    key: settingKeys.toc.headingNumberFileEnable,
-                    title: '启用标题自动编号',
-                    type: 'enum',
-                    enumChoices: ['全局自动编号', '单页面手动开关', '关闭自动编号'],
-                    default: '关闭自动编号',
-                    description: '自动将层级编号添加到 Markdown 文件中的标题文本，会直接修改笔记文本。',
-                })
-
 
             // 自动标题等级调整
             list.push(

@@ -1,41 +1,20 @@
 /**
  * 工具栏按钮模块
  * 
- * 提供两个独立的工具栏按钮：
- * - 开启/恢复编号 ✅：授权当前页面自动编号，或在暂停后恢复
- * - 暂停监控 ⏸️：暂停后台监控和自动编号（保留已有编号不删除）
+ * 提供一个"重新编号"按钮，手动触发当前页面的标题编号
+ * 纯按钮触发模式，无后台监控
  */
 
 import { createElementWithAttributes } from '../util/domUtils'
-import {
-    isPageActive, isPagePaused,
-    applyHeadingNumbersToPage, togglePageState,
-    pausePageNumbering, resumePageNumbering
-} from './index'
-import { pauseIndicatorScan, resumeIndicatorScan } from './headingButtons'
+import { applyHeadingNumbersToPage } from './index'
 
 let currentPageName: string = ''
 let currentPageUuid: string = ''
-let enableIcon: HTMLElement | null = null
-let pauseIcon: HTMLElement | null = null
+let renumberIcon: HTMLElement | null = null
 let isHandlingClick = false
 
 /**
- * 工具栏按钮的三种状态
- */
-type ToolbarState = 'disabled' | 'active' | 'paused'
-
-/**
- * 根据当前页面状态计算工具栏状态
- */
-const getToolbarState = (): ToolbarState => {
-    if (!isPageActive(currentPageUuid)) return 'disabled'
-    if (isPagePaused(currentPageUuid)) return 'paused'
-    return 'active'
-}
-
-/**
- * 创建工具栏按钮
+ * 创建工具栏的"重新编号"按钮
  */
 export const createToolbarIcon = (pageName: string, pageUuid: string) => {
     // 移除已有按钮
@@ -53,22 +32,13 @@ export const createToolbarIcon = (pageName: string, pageUuid: string) => {
         return
     }
 
-    const state = getToolbarState()
-
-    // === 按钮1：开启/恢复自动编号 ===
-    const isBtn1Active = state === 'disabled' || state === 'paused'
-    enableIcon = createElementWithAttributes('a', {
+    // 创建"重新编号"按钮
+    renumberIcon = createElementWithAttributes('a', {
         class: 'button',
-        id: 'lse-heading-numbering-enable',
-        title: state === 'paused'
-            ? '恢复自动编号和后台监控'
-            : state === 'active'
-                ? '当前页面已授权自动编号'
-                : '开启当前页面的自动编号',
+        id: 'lse-heading-numbering-renumber',
+        title: '重新扫描本页标题并自动编号',
         style: `
-            cursor: ${isBtn1Active ? 'pointer' : 'not-allowed'};
-            opacity: ${isBtn1Active ? '1' : '0.3'};
-            pointer-events: ${isBtn1Active ? 'auto' : 'none'};
+            cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -76,8 +46,8 @@ export const createToolbarIcon = (pageName: string, pageUuid: string) => {
         `
     })
 
-    // 编号列表图标
-    enableIcon.innerHTML = `
+    // 编号列表图标（保留原编号图标）
+    renumberIcon.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <text x="1" y="7" font-size="7" font-weight="bold" fill="#9ca3af" font-family="Arial">1</text>
             <line x1="9" y1="4" x2="21" y2="4" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"/>
@@ -88,128 +58,26 @@ export const createToolbarIcon = (pageName: string, pageUuid: string) => {
         </svg>
     `
 
-    // 按钮1 点击事件
-    enableIcon.addEventListener('click', async () => {
+    // 点击事件：直接编号当前页面
+    renumberIcon.addEventListener('click', async () => {
         if (isHandlingClick) return
         isHandlingClick = true
         try {
-            const s = getToolbarState()
-            if (s === 'disabled') {
-                // 首次开启：添加到白名单 + 编号 + 启动监控
-                await togglePageState(currentPageName, currentPageUuid)
-                await applyHeadingNumbersToPage(currentPageName)
-                resumeIndicatorScan()
-                updateButtonStates()
-                await logseq.UI.showMsg('✅ 已开启当前页面的自动编号', 'success', { timeout: 2000 })
-            } else if (s === 'paused') {
-                // 从暂停恢复：重新编号 + 启动监控
-                resumePageNumbering(currentPageUuid)
-                resumeIndicatorScan()
-                await applyHeadingNumbersToPage(currentPageName)
-                updateButtonStates()
-                await logseq.UI.showMsg('✅ 已恢复自动编号和后台监控', 'success', { timeout: 2000 })
-            }
-            // state === 'active' 时按钮不可点击（pointer-events: none）
+            await applyHeadingNumbersToPage(currentPageName)
+            await logseq.UI.showMsg('✅ 标题编号已完成', 'success', { timeout: 2000 })
         } catch (error) {
-            console.error('开关编号失败:', error)
-            await logseq.UI.showMsg('操作失败', 'error')
+            console.error('编号失败:', error)
+            await logseq.UI.showMsg('编号失败', 'error')
         } finally {
             setTimeout(() => { isHandlingClick = false }, 300)
         }
     })
 
-    // === 按钮2：暂停自动编号和监控 ===
-    const isBtn2Disabled = state !== 'active'
-    pauseIcon = createElementWithAttributes('a', {
-        class: 'button',
-        id: 'lse-heading-numbering-pause',
-        title: state === 'active'
-            ? '暂停自动编号和后台监控（保留已有编号）'
-            : state === 'paused'
-                ? '已暂停自动编号和监控'
-                : '请先开启自动编号',
-        style: `
-            cursor: ${isBtn2Disabled ? 'not-allowed' : 'pointer'};
-            opacity: ${isBtn2Disabled ? '0.3' : '0.8'};
-            pointer-events: ${isBtn2Disabled ? 'none' : 'auto'};
-            display: ${state === 'disabled' ? 'none' : 'inline-flex'};
-            align-items: center;
-            justify-content: center;
-            padding: 0 6px;
-        `
-    })
-
-    // 暂停图标：双竖线
-    pauseIcon.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <rect x="5" y="3" width="4" height="18" rx="1" fill="#9ca3af" stroke="none"/>
-            <rect x="15" y="3" width="4" height="18" rx="1" fill="#9ca3af" stroke="none"/>
-        </svg>
-    `
-
-    // 按钮2 点击事件
-    pauseIcon.addEventListener('click', async () => {
-        if (isHandlingClick) return
-        isHandlingClick = true
-        try {
-            const s = getToolbarState()
-            if (s === 'active') {
-                // 暂停：停止监控，保留编号，保留白名单
-                pausePageNumbering(currentPageUuid)
-                pauseIndicatorScan()
-                updateButtonStates()
-                await logseq.UI.showMsg('⏸️ 已暂停自动编号和后台监控（编号已保留）', 'warning', { timeout: 2500 })
-            }
-            // state === 'paused' 或 'disabled' 时按钮不可点击
-        } catch (error) {
-            console.error('暂停编号失败:', error)
-            await logseq.UI.showMsg('操作失败', 'error')
-        } finally {
-            setTimeout(() => { isHandlingClick = false }, 300)
-        }
-    })
-
-    // 插入按钮到工具栏
+    // 插入按钮到工具栏最前面
     if (toolbar.firstChild) {
-        toolbar.insertBefore(pauseIcon, toolbar.firstChild)
-        toolbar.insertBefore(enableIcon, toolbar.firstChild)
+        toolbar.insertBefore(renumberIcon, toolbar.firstChild)
     } else {
-        toolbar.appendChild(enableIcon)
-        toolbar.appendChild(pauseIcon)
-    }
-}
-
-/**
- * 更新两个按钮的视觉状态（根据当前三态）
- */
-const updateButtonStates = () => {
-    const state = getToolbarState()
-
-    // 按钮1：开启/恢复
-    if (enableIcon) {
-        const isBtn1Active = state === 'disabled' || state === 'paused'
-        enableIcon.style.opacity = isBtn1Active ? '1' : '0.3'
-        enableIcon.style.pointerEvents = isBtn1Active ? 'auto' : 'none'
-        enableIcon.style.cursor = isBtn1Active ? 'pointer' : 'not-allowed'
-        enableIcon.title = state === 'paused'
-            ? '恢复自动编号和后台监控'
-            : state === 'active'
-                ? '当前页面已授权自动编号'
-                : '开启当前页面的自动编号'
-    }
-
-    // 按钮2：暂停
-    if (pauseIcon) {
-        const isBtn2Disabled = state !== 'active'
-        pauseIcon.style.opacity = isBtn2Disabled ? '0.3' : '0.8'
-        pauseIcon.style.pointerEvents = isBtn2Disabled ? 'none' : 'auto'
-        pauseIcon.style.cursor = isBtn2Disabled ? 'not-allowed' : 'pointer'
-        pauseIcon.style.display = state === 'disabled' ? 'none' : 'inline-flex'
-        pauseIcon.title = state === 'active'
-            ? '暂停自动编号和后台监控（保留已有编号）'
-            : state === 'paused'
-                ? '已暂停自动编号和监控'
-                : '请先开启自动编号'
+        toolbar.appendChild(renumberIcon)
     }
 }
 
@@ -217,27 +85,16 @@ const updateButtonStates = () => {
  * 移除工具栏按钮
  */
 export const removeToolbarIcon = () => {
-    if (enableIcon && enableIcon.parentNode) {
-        enableIcon.parentNode.removeChild(enableIcon)
-        enableIcon = null
-    }
-    if (pauseIcon && pauseIcon.parentNode) {
-        pauseIcon.parentNode.removeChild(pauseIcon)
-        pauseIcon = null
+    if (renumberIcon && renumberIcon.parentNode) {
+        renumberIcon.parentNode.removeChild(renumberIcon)
+        renumberIcon = null
     }
 }
 
 /**
- * 页面切换时更新工具栏按钮
+ * 页面切换时创建/更新工具栏按钮
  */
 export const updateToolbarIcon = (pageName: string, pageUuid: string) => {
-    currentPageName = pageName
-    currentPageUuid = pageUuid
-
-    if (!enableIcon) {
-        createToolbarIcon(pageName, pageUuid)
-        return
-    }
-
-    updateButtonStates()
+    // 纯按钮触发模式：每次页面切换时重新创建按钮
+    createToolbarIcon(pageName, pageUuid)
 }

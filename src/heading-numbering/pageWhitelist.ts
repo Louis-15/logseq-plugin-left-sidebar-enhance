@@ -2,20 +2,17 @@
  * 编号配置管理模块（图谱级隔离存储）
  *
  * 使用 Logseq 官方的 SandboxStorage API 将配置数据存储为 JSON 文件：
- * 1. 白名单（whitelist）：哪些页面启用了自动编号（存储页面 UUID，不受重命名影响）
- * 2. 块状态（blockStates）：各标题块的编号行为（skip/lock/repeat）
+ * 块状态（blockStates）：各标题块的编号行为（skip/lock/repeat）
  *
- * 存储位置：{.logseq/plugins/插件目录/storage/}{图谱名}.json
+ * 存储位置：{图谱目录/assets/storages/left-sidebar-enhance/}{图谱名}.json
  *
  * 好处：
  * 1. 使用图谱名作为文件名，天然按图谱隔离
  * 2. 不会被 Logseq 当作笔记页面索引（在 Logseq 里看不见）
- * 3. 白名单使用 UUID 标识页面，重命名笔记后编号配置不会丢失
- * 4. 使用 Logseq 官方 API，稳定可靠
+ * 3. 使用 Logseq 官方 API，稳定可靠
  *
  * JSON 结构：
  * {
- *   "whitelist": ["page-uuid-1", "page-uuid-2"],
  *   "blockStates": {
  *     "block-uuid-1": "skip",
  *     "block-uuid-2": "lock",
@@ -65,8 +62,6 @@ const getGraphKey = async (): Promise<string> => {
 
 // ================ 内存缓存 ================
 
-// 白名单缓存（存储页面 UUID）
-let cachedWhitelist: Set<string> = new Set()
 // 块状态缓存：uuid → 状态字符串
 let cachedBlockStates: Map<string, string> = new Map()
 // 标记是否已加载过
@@ -75,17 +70,9 @@ let isLoaded = false
 // ================ JSON 数据解析 ================
 
 /**
- * 从 JSON 数据对象中提取白名单和块状态到内存缓存
+ * 从 JSON 数据对象中提取块状态到内存缓存
  */
 const parseConfigData = (data: any): void => {
-    // 加载白名单（仅保留 UUID 格式的条目，忽略旧版的 pageName 格式）
-    if (Array.isArray(data.whitelist)) {
-        data.whitelist.forEach((entry: string) => {
-            if (isUuidFormat(entry)) {
-                cachedWhitelist.add(entry)
-            }
-        })
-    }
     // 加载块状态
     if (data.blockStates && typeof data.blockStates === 'object') {
         for (const [uuid, state] of Object.entries(data.blockStates)) {
@@ -105,7 +92,6 @@ const buildConfigData = (): object => {
         blockStatesObj[uuid] = state
     }
     return {
-        whitelist: [...cachedWhitelist].sort(),
         blockStates: blockStatesObj
     }
 }
@@ -117,7 +103,6 @@ const buildConfigData = (): object => {
  * 在插件启动和图谱切换时调用
  */
 export const loadConfigFromPage = async (): Promise<void> => {
-    cachedWhitelist.clear()
     cachedBlockStates.clear()
     isLoaded = false
     // 图谱切换时重置 key 缓存
@@ -132,8 +117,16 @@ export const loadConfigFromPage = async (): Promise<void> => {
         if (raw) {
             const data = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw))
             parseConfigData(data)
+
+            // 🧹 升级迁移：清除旧版残留的 whitelist 字段（新版纯按钮触发，不再使用白名单）
+            if (data.whitelist !== undefined) {
+                delete data.whitelist
+                await storage.setItem(key, JSON.stringify(buildConfigData(), null, 2))
+                console.log('[LSE] 已清除旧版残留白名单数据')
+            }
+
             isLoaded = true
-            console.log('[LSE] 编号配置已加载 — 白名单:', cachedWhitelist.size, '个页面, 块状态:', cachedBlockStates.size, '条记录')
+            console.log('[LSE] 块状态已加载 —', cachedBlockStates.size, '条记录')
             return
         }
 
@@ -141,15 +134,15 @@ export const loadConfigFromPage = async (): Promise<void> => {
         const migrated = await migrateFromLegacyPage()
         if (migrated) {
             isLoaded = true
-            console.log('[LSE] 已从旧版 md 页面迁移到沙箱存储 — 白名单:', cachedWhitelist.size, '个页面, 块状态:', cachedBlockStates.size, '条记录')
+            console.log('[LSE] 已从旧版 md 页面迁移到沙箱存储 —', cachedBlockStates.size, '条块状态记录')
             return
         }
 
         // 首次使用，数据为空
         isLoaded = true
-        console.log('[LSE] 编号配置为空（首次使用）')
+        console.log('[LSE] 块状态配置为空（首次使用）')
     } catch (e) {
-        console.error('[LSE] 加载编号配置失败:', e)
+        console.error('[LSE] 加载块状态配置失败:', e)
         isLoaded = true
     }
 }
@@ -210,7 +203,7 @@ const migrateFromLegacyPage = async (): Promise<boolean> => {
         }
 
         // 如果有数据被加载，保存到沙箱存储
-        if (cachedWhitelist.size > 0 || cachedBlockStates.size > 0) {
+        if (cachedBlockStates.size > 0) {
             await saveConfig()
             return true
         }
@@ -218,42 +211,6 @@ const migrateFromLegacyPage = async (): Promise<boolean> => {
         console.warn('[LSE] 旧版数据迁移失败:', e)
     }
     return false
-}
-
-// ================ 白名单操作 ================
-
-/**
- * 判断指定页面是否在白名单中（通过页面 UUID 比对）
- */
-export const isPageWhitelisted = (pageUuid: string): boolean => {
-    return cachedWhitelist.has(pageUuid)
-}
-
-/**
- * 将页面添加到白名单（使用页面 UUID）
- */
-export const addPageToWhitelist = async (pageUuid: string): Promise<void> => {
-    if (cachedWhitelist.has(pageUuid)) return
-    cachedWhitelist.add(pageUuid)
-    await saveConfig()
-    console.log('[LSE] 已添加到白名单 (UUID):', pageUuid)
-}
-
-/**
- * 将页面从白名单移除（使用页面 UUID）
- */
-export const removePageFromWhitelist = async (pageUuid: string): Promise<void> => {
-    if (!cachedWhitelist.has(pageUuid)) return
-    cachedWhitelist.delete(pageUuid)
-    await saveConfig()
-    console.log('[LSE] 已从白名单移除 (UUID):', pageUuid)
-}
-
-/**
- * 获取当前白名单的副本（用于调试）
- */
-export const getWhitelist = (): string[] => {
-    return [...cachedWhitelist]
 }
 
 // ================ 块状态操作 ================
@@ -298,29 +255,13 @@ const isUuidFormat = (str: string): boolean => {
 // ================ 孤儿数据清理 ================
 
 /**
- * 清理已不存在的页面和块的配置数据
+ * 清理已不存在的块的配置数据
  * 在插件启动 15 秒后延时调用，不阻塞 Logseq 启动
  */
 export const cleanUpOrphanedData = async (): Promise<void> => {
-    let removedPages = 0
     let removedBlocks = 0
 
-    // 1. 清理白名单中已删除的页面
-    const pageUuids = [...cachedWhitelist]
-    for (const uuid of pageUuids) {
-        try {
-            const page = await logseq.Editor.getPage(uuid)
-            if (!page) {
-                cachedWhitelist.delete(uuid)
-                removedPages++
-            }
-        } catch {
-            cachedWhitelist.delete(uuid)
-            removedPages++
-        }
-    }
-
-    // 2. 清理 blockStates 中已删除的块
+    // 清理 blockStates 中已删除的块
     const blockUuids = [...cachedBlockStates.keys()]
     for (const uuid of blockUuids) {
         try {
@@ -335,10 +276,10 @@ export const cleanUpOrphanedData = async (): Promise<void> => {
         }
     }
 
-    // 3. 如果有清理则保存
-    if (removedPages > 0 || removedBlocks > 0) {
+    // 如果有清理则保存
+    if (removedBlocks > 0) {
         await saveConfig()
-        console.log(`[LSE] 孤儿数据清理完成 — 移除了 ${removedPages} 个失效页面白名单, ${removedBlocks} 个失效块状态`)
+        console.log(`[LSE] 孤儿数据清理完成 — 移除了 ${removedBlocks} 个失效块状态`)
     } else {
         console.log('[LSE] 孤儿数据清理完成 — 无需清理')
     }

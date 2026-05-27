@@ -1,6 +1,5 @@
 import { BlockEntity } from "@logseq/libs/dist/LSPlugin.user"
-import { booleanLogseqVersionMd, onBlockChanged, onBlockChangedOnce } from ".."
-import { applyHeadingNumbersToPage } from "../heading-numbering"
+import { booleanLogseqVersionMd } from ".."
 import { settingKeys } from '../settings/keys'
 import { isHeadersCacheEqual, setCachedHeaders } from "./cache"
 import { clearTOC } from "./DOM"
@@ -76,21 +75,9 @@ export const refreshPageHeaders = async (pageName: string, zoom?: { zoomIn: bool
         return headerLevel > 0 && headerLevel <= 6
       })
 
-    // 有标题时：渲染大纲 + 异步应用编号 + 注册数据库变更监听
+    // 有标题时：渲染大纲（纯按钮触发，不自动编号，不注册监听器）
     if (headers.length > 0) {
-      // 异步应用标题编号（不阻塞 UI 渲染）
-      setTimeout(() => {
-        try {
-          void applyHeadingNumbersToPage(pageName)
-        } catch (e) {
-          console.error('Error applying heading numbers on page load:', e)
-        }
-      }, 50)
-
       await updateHeadingElements(element, headers as TocBlock[], pageName, versionMd, zoom ? zoom : undefined)
-      // 首次检测到标题时，注册数据库变更监听器用于实时刷新 TOC
-      if (onBlockChangedOnce === false)
-        onBlockChanged()
     } else
       // 无标题时：清空大纲区域
       clearTOC()
