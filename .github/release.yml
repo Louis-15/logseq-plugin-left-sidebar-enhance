@@ -1,2 +1,0 @@
-# Add .github/release.yml to integrate with GitHub Releases
-$ github-label-setup --addReleaseYml
