@@ -1,7 +1,7 @@
 /**
- * 编号配置管理模块（图谱级隔离存储）
+ * 块编号状态持久化存储模块（图谱级隔离存储）
  *
- * 使用 Logseq 官方的 SandboxStorage API 将配置数据存储为 JSON 文件：
+ * 使用 Logseq 官方的 SandboxStorage API 将块状态存储为 JSON 文件：
  * 块状态（blockStates）：各标题块的编号行为（skip/lock/repeat）
  *
  * 存储位置：{图谱目录/assets/storages/left-sidebar-enhance/}{图谱名}.json
@@ -305,5 +305,5 @@ export const cleanUpOrphanedData = async (): Promise<void> => {
     }
 }
 
-// 保持向后兼容的别名
+// 保持向后兼容的别名（旧名称，仅用于外部可能的动态引用）
 export const loadWhitelist = loadConfigFromPage

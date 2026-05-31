@@ -13,7 +13,7 @@ import { initHeadingNumbering } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
-import { loadConfigFromPage } from './heading-numbering/pageWhitelist'
+import { loadConfigFromPage } from './heading-numbering/blockStates'
 
 // 当前页面原始名称（全局状态，供各模块读取）
 let currentPageOriginalName: PageEntity["originalName"] = ""
@@ -87,7 +87,7 @@ const main = async () => {
   // === 延时 15 秒后执行孤儿数据清理（不阻塞启动） ===
   setTimeout(async () => {
       try {
-          const { cleanUpOrphanedData } = await import('./heading-numbering/pageWhitelist')
+          const { cleanUpOrphanedData } = await import('./heading-numbering/blockStates')
           await cleanUpOrphanedData()
       } catch (e) {
           console.warn('[LSE] 孤儿数据清理失败:', e)

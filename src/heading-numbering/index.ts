@@ -7,7 +7,7 @@ import { booleanLogseqVersionMd } from '..'
 import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTocBlock } from '../page-outline/findHeaders'
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
-import { loadConfigFromPage, getBlockState, setBlockState } from './pageWhitelist'
+import { loadConfigFromPage, getBlockState, setBlockState } from './blockStates'
 
 let isFileBasedGraph = false
 
