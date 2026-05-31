@@ -1,151 +1,103 @@
-# Logseq Plugin: Left Sidebar Enhance
+# Logseq Plugin: Left-Sidebar Enhance
 
-> [!NOTE]
-> This plugin works on Logseq db version.
+> A Logseq plugin that enhances the left sidebar with page outline (TOC), hierarchical heading numbering, auto-heading-level adjustment, mouse-over sidebar reveal, and more.
 
 <div align="right">
 
-[English](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance)|[日本語](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/blob/main/readme.ja.md) [![latest release version](https://img.shields.io/github/v/release/YU000jp/logseq-plugin-left-sidebar-enhance)](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/releases)
-[![License](https://img.shields.io/github/license/YU000jp/logseq-plugin-left-sidebar-enhance?color=blue)](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/YU000jp/logseq-plugin-left-sidebar-enhance/total.svg)](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/releases)
- Released: 20231002
+[English](./readme.md) | [中文](./readme.zh-CN.md)
+
 </div>
 
-### Main Features
+---
 
-This plugin provides five main features:
+## Features
 
-1. Page Outline (=Table of contents :Auto-generated)
-2. Hierarchical Heading Numbering (File-Based Model Only)
-3. Auto-adjust Markdown Heading Levels (File-Based Model Only) 🆕
-4. Auto-hide/show Left Sidebar
-5. Visual Timer
+### 1. Page Outline (Table of Contents)
+
+Automatically generates a table of contents in the left sidebar based on headings (`#` to `######`) in the current page.
+
+- **Click** → Jump to heading position
+- **Ctrl+Click** → Open as zoom page
+- **Shift+Click** → Open in right sidebar
+- **Hover highlight** → Hover over TOC item to highlight the corresponding block; focus a block to highlight its TOC entry
+- **Journal support** → Shows date list for journal pages (toggleable in settings)
+
+### 2. Hierarchical Heading Numbering (File-Based Graphs Only)
+
+Manually add hierarchical numbers (e.g., `1`, `1.1`, `1.1.1`) to Markdown headings via a toolbar button — no background listeners, no performance impact.
+
+- **Toolbar button** → Click "Renumber" to number the current page
+- **Right-click menu** on block bullets:
+  - **Skip** — Exclude this heading from numbering; its children inherit the parent number prefix
+  - **Lock** — Keep the current number unchanged; subsequent siblings increment from it
+  - **Repeat** — Use the same number as the previous sibling (for duplicate numbering)
+- **Per-graph persistence** → Heading states are stored in your graph's assets folder (survives restarts)
+- **Graceful cleanup** → Orphaned block data is safely pruned 15s after startup
+
+### 3. Auto-Adjust Heading Levels (File-Based Graphs Only)
+
+Automatically normalizes Markdown heading levels based on the block tree's outline depth, ensuring a clean hierarchy. Works within the H1–H4 range.
+
+- **Reserve H1** → Optionally reserve H1 for the page title
+- **Commands** → Normalize headings on the current page or within a selection via the command palette (`Ctrl+Shift+P`, search "Normalize headings")
+
+### 4. Mouse-Over Sidebar Reveal
+
+When the left sidebar is hidden, move your mouse to the left edge to temporarily reveal it.
+
+- **Type A** → Trigger by hovering near the top-left corner
+- **Type B (Recommended)** → Trigger by hovering over the leftmost column of the window
+- Toggle via the top-left `≡` button or plugin settings
+
+### 5. Favorites & History Dedup
+
+Automatically removes duplicate items between Favorites and History on startup and every 10 minutes.
 
 ---
 
-1. **Page Outline Feature**
-   - Automatically displays a Page Outline in the left menu, generated from headers in the opened page's content
-   > (Markdown headers: `#`,`##`,`###`,`####`,`#####`,`######`)
-   
-   Quick Actions:
-   - Click: Jump to header position
-   - Ctrl+Click: Open as zoom page
-   - Shift+Click: Open in right sidebar
-   - Shortcut keys (MD version only): `Alt+1` to `Alt+6` to insert headers
+## Installation
 
-   ![image](https://github.com/user-attachments/assets/f25fff05-1ae4-4be7-aff6-8cb8ca277155)
+### Via Logseq Marketplace
 
-1. **Hierarchical Heading Numbering** (File-Based Model Only)
-   - Automatically adds hierarchical numbers (1, 1.1, 1.1.1, etc.) to markdown headings
-   - **File-Update Mode**: Directly modifies markdown files to add numbers
-   - **Per-Page Activation**: Toggle numbering for individual pages using toolbar icon
-   - **Customizable Delimiters**: Configure number separators (e.g., ".", "-", "→")
-   - **Cleanup Function**: Remove all heading numbers from current page
-   
-   <img width="698" height="550" alt="image" src="https://github.com/user-attachments/assets/fcce4695-03f7-4e3f-9543-a14539031ee0" />
+1. Click the `•••` button on the toolbar and select `Plugins`
+2. Switch to the **Marketplace** tab
+3. Search for `Left-Sidebar Enhance` and install
 
-1. **Auto-adjust Markdown Heading Levels** 🆕 (File-Based Model Only)
-   - Automatically normalizes Markdown heading levels based on outline depth
-   - **Three Presets**: Choose from H2-H6 (default), H1-H3, or H2-H4 ranges
-   - **H1 Reservation**: Option to reserve H1 for page titles
-   - **Commands**: Normalize entire page or selected blocks
-   - **Detailed Documentation**: [Auto-adjust Markdown Heading Levels Guide](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/blob/main/docs/auto-heading-level.md)
+### Manual Installation
 
-
-1. Auto-hide Left Menu on Mouse Over (Default: **Disabled**)
-   > Use the ![image](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/assets/111847207/8e3efccf-27e9-4332-b431-9765a69463a9) button in the top-left corner.
-
-1. Visual Timer Feature
-   > <img width="235" height="383" alt="image" src="https://github.com/user-attachments/assets/fb616a6a-6e8d-4d90-9e37-8d36f0feece9" />
+1. Download the latest release from the [Releases](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/releases) page
+2. Unzip into the Logseq plugins directory
+3. Enable the plugin in Logseq's plugin manager
 
 ---
 
-### Installation
+## Usage
 
-Install from Logseq Marketplace
-
-- Click [`---`] on the toolbar to open [`Plugins`]. Select Marketplace. Type `Left` in the search field and select it from the results to install.
-
-### Usage
-
-- Page Outline: When opening any page, the TOC automatically appears in the left sidebar menu.
-   - How it works:
-      > Automatically detects both Markdown (#) and Logseq DB format headers
-      - Updates automatically when content changes
-      - Click to scroll to header position
-   - Note:
-     - By default, when opening the journal, it shows a list of dates loaded by scrolling. To view the TOC, open a date page.
-     > Turn off this option in plugin settings to show header list for the current day's page.
-- Mouse Over: Click the ![image](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/assets/111847207/8e3efccf-27e9-4332-b431-9765a69463a9) button in the top-left corner. The left sidebar state will toggle. Shortcut keys work the same way.
-- Use plugin settings to enable/disable each feature.
-
-### User Settings
-
-1. Hide Duplicates in Favorites and History
-   - Automatically hides duplicates between favorites and recent items
-   > Checks for duplicates on plugin startup and every 10 minutes
-
-1. Left Sidebar Mouse Over Feature
-   - Enable/disable auto-show left sidebar on mouse over
-   - Select display type: Type A (Corner Hover) or Type B (Edge Hover)
-   - Mouse Over Types
-      1. Type A: Opens when mouse approaches the left corner area
-         > ⚠️May cause issues with small windows
-      1. Type B (Recommended): Opens when mouse is placed on the leftmost column
-
-1. Page Outline (Table of contents) Feature
-   - Enable/disable Page Outline feature
-   - Open as zoom page by default
-     > If disabled, Ctrl+Click for zoom page view
-   - Mouse over highlight feature
-     - Highlight corresponding block when hovering over header
-     - Highlight corresponding header when hovering over block
-   - Show date list in journal pages
-   - List of words to exclude from the header list (line-separated)
-
-1. Hierarchical Heading Numbering Feature (File-Based Model Only)
-   - Enable/disable file-update mode for automatic heading numbering
-   - Configure number delimiter (new and old for detection/replacement)
-   - Per-page activation storage mode
-     - Store True Only: Save only enabled pages (default)
-     - Store False Only: Enable all pages by default, save only disabled
-   - Cleanup function: Remove heading numbers from current page
-   > Note: Only works with the local file-based model for safety
-
-1. Auto-adjust Markdown Heading Levels Feature 🆕 (File-Based Model Only)
-   - Enable/disable automatic heading level normalization
-   - Choose heading level range preset (H2-H6, H1-H3, or H2-H4)
-   - Reserve H1 for page titles option
-   - Commands available via command palette
-     - Normalize headings on current page
-     - Normalize headings in selection
-   - See [detailed documentation](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/blob/main/docs/auto-heading-level.md) for more information
+- **Page Outline** — Opens any page; the TOC appears automatically in the left sidebar
+- **Heading Numbering** — Click the `[1 2 3]` icon in the page toolbar, or right-click a heading's block bullet for skip/lock/repeat
+- **Auto-Adjust Levels** — Use the command palette (`Ctrl+Shift+P`) and search for "Normalize headings on current page" or "Normalize headings in selection"
+- **Mouse-Over** — Click the `≡` button in the top-left corner to toggle between hidden and mouse-over modes
 
 ---
 
-## Showcase / Questions / Ideas / Help
+## Plugin Settings
 
-> Head to the [Discussion](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/discussions) tab to ask and find this kind of things.
+| Setting | Description |
+|---------|-------------|
+| Hide Duplicates in Favorites & History | Auto-deduplicate on startup and every 10 min |
+| Mouse-Over Reveal | Enable/disable, select Type A or Type B |
+| Page Outline (TOC) | Enable/disable, highlight on hover, journal date list |
+| Heading Numbering | Button-triggered; configure via right-click menu on headings |
+| Auto-Adjust Heading Levels | Enable/disable, reserve H1 (range fixed to H1–H4) |
 
-### Related plugins
+---
 
-- [Logging Search plugin](https://github.com/YU000jp/logseq-plugin-logging-search)
-  > Query-based search plugin that displays fully rendered results. Add a search box in left menu.
-  
-    ![image](https://github.com/user-attachments/assets/ac903fd7-5cd3-4b0a-97fb-df3a43fc0967)
+## Data Storage
 
-- [Show Weekday and Week-number plugin](https://github.com/YU000jp/logseq-plugin-show-weekday-and-week-number)
-  > Monthly Calendar
+Heading states (skip/lock/repeat) are stored as a JSON file under your graph's `assets/storages/left-sidebar-enhance/` directory, using Logseq's SandboxStorage API. Data is isolated per graph and invisible within Logseq's page list.
 
-    ![image](https://github.com/user-attachments/assets/8216c9b9-0c8e-4d06-93a1-630a49063211)
+---
 
+## License
 
-## Prior Art & Credit
-
-- CSS code (Show left sidebar on mouse over) >
-  1. Type A: [@mæn](https://discord.com/channels/725182569297215569/775936939638652948/1155251493486727338)
-  1. Type B (Default): [@sethyuan](https://github.com/YU000jp/logseq-plugin-left-sidebar-enhance/issues/1#issue-1910716211)
-- Logseq Plugin >
-  1. [@hkgnp/ logseq-toc-plugin](https://github.com/hkgnp/logseq-toc-plugin/) (TOC display)
-  1. [@freder/ logseq-plugin-jump-to-block](https://github.com/freder/logseq-plugin-jump-to-block/) (TOC display)
-- Author: [@YU000jp](https://github.com/YU000jp)
+MIT

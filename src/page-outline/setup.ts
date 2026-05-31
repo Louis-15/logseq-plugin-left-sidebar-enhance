@@ -1,7 +1,6 @@
 import { LSPluginBaseInfo } from "@logseq/libs/dist/LSPlugin.user"
 import { t } from "logseq-l10n"
 import { booleanLogseqVersionMd, getCurrentPageOriginalName } from ".."
-import { headerCommand } from "../headerCommand"
 import { createElementWithAttributes } from "../util/domUtils"
 import { removeContainer } from "../util/lib"
 import { refreshPageHeaders } from "./pageHeaders"
@@ -53,9 +52,6 @@ export const setupTOCHandlers = (versionMd: boolean) => {
     logseq.App.onRouteChanged(async () => {
         await routeCheck(versionMd)
     })
-
-    // 注册标题插入快捷命令
-    headerCommand()
 
     // ===================== 光标焦点追踪：高亮当前编辑块所属的大纲标题 =====================
     // 原理：监听宿主文档的 focusin 事件，当用户点击进入某个编辑 Textarea 时，
