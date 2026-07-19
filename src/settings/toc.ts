@@ -38,6 +38,17 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
                         description: '启用后，H1 将预留给页面标题，内容标题从 H2 开始',
                     })
             }
+
+            // 区间分类编号规则
+            list.push(
+                {
+                    key: settingKeys.toc.headingCategoryRulesEnabled,
+                    title: '启用的区间编号规则',
+                    type: 'string',
+                    default: '人设标签',
+                    description: '每行一个规则名（tag 名）。只有列出的规则才会生效。留空则启用全部规则。规则文件通过 SandboxStorage 的 category-rule-{规则名} key 管理。',
+                    inputAs: 'textarea',
+                })
         }
     }
 

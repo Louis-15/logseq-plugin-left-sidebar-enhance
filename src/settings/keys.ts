@@ -11,6 +11,9 @@ export const settingKeys = {
                           autoHeadingLevelEnabled: 'autoHeadingLevelEnabled',
                           autoHeadingLevelPreset: 'autoHeadingLevelPreset',
                           autoHeadingLevelReserveH1: 'autoHeadingLevelReserveH1',
+
+                          // 区间分类编号规则
+                          headingCategoryRulesEnabled: 'headingCategoryRulesEnabled',
              },
              common: {
                           booleanFavAndRecent: 'booleanFavAndRecent',

@@ -8,6 +8,7 @@ import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTo
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
 import { loadConfigFromPage, getBlockState, setBlockState } from './blockStates'
+import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule } from './categoryRules'
 
 let isFileBasedGraph = false
 
@@ -69,6 +70,10 @@ export const initHeadingNumbering = async () => {
 
     // 从沙箱存储加载块状态
     await loadConfigFromPage()
+
+    // 确保默认分类规则存在并加载规则
+    await ensureDefaultRule()
+    await loadAllCategoryRules()
 }
 
 /**
@@ -152,14 +157,47 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
         const pageBlocks = await logseq.Editor.getPageBlocksTree(pageName)
         if (!pageBlocks) return
 
-        // Get hierarchical headers
+        // === 新增：检测页面是否匹配区间分类规则 ===
+        let categoryClassification: Map<number, HierarchicalTocBlock[]> | undefined
+        let categoryRule: CategoryRule | null = null
+
+        try {
+            categoryRule = await detectPageCategoryRule(pageName)
+            if (categoryRule) {
+                // 获取层级标题树（用于分类，与后续统一使用同一份数据）
+                const versionMd = booleanLogseqVersionMd()
+                const hierarchicalHeaders = versionMd
+                    ? getHierarchicalTocBlocks(pageBlocks as any)
+                    : getHierarchicalTocBlocksForDb(pageBlocks as any)
+
+                categoryClassification = classifyHeadingsByCategory(
+                    hierarchicalHeaders,
+                    categoryRule
+                )
+            }
+        } catch (e) {
+            // 分类失败不影响后续编号，回退到顺序模式
+            console.warn('[heading-numbering] 区间分类检测失败，回退到顺序编号:', e)
+            categoryClassification = undefined
+            categoryRule = null
+        }
+
+        // Get hierarchical headers (reuse if already fetched for classification)
         const versionMd = booleanLogseqVersionMd()
-        const hierarchicalHeaders = versionMd
-            ? getHierarchicalTocBlocks(pageBlocks as any)
-            : getHierarchicalTocBlocksForDb(pageBlocks as any)
+        const hierarchicalHeaders = categoryClassification
+            ? (versionMd
+                ? getHierarchicalTocBlocks(pageBlocks as any)
+                : getHierarchicalTocBlocksForDb(pageBlocks as any))
+            : (versionMd
+                ? getHierarchicalTocBlocks(pageBlocks as any)
+                : getHierarchicalTocBlocksForDb(pageBlocks as any))
 
         // Calculate numbering and update blocks using hierarchy
-        await updateHierarchicalBlocks(hierarchicalHeaders, [], newDelimiter, oldDelimiter)
+        // 传入分类结果和规则（如果存在）
+        await updateHierarchicalBlocks(
+            hierarchicalHeaders, [], newDelimiter, oldDelimiter,
+            categoryClassification, categoryRule ?? undefined
+        )
     } catch (error) {
         console.error('Error applying heading numbers:', error)
     }
@@ -183,15 +221,22 @@ const updateHierarchicalBlocks = async (
     headers: HierarchicalTocBlock[],
     parentNumbers: number[],
     newDelimiter: string,
-    oldDelimiter: string
+    oldDelimiter: string,
+    categoryClassification?: Map<number, HierarchicalTocBlock[]>,
+    categoryRule?: CategoryRule
 ): Promise<void> => {
 
     /**
      * 处理同级标题列表
      * @param siblings 同级标题数组
      * @param parentNumberStr 父标题的编号字符串（如 "6"）,顶级标题为空
+     * @param categoryPrefix 区间编号前缀（仅顶级且分类模式时使用），如区间2传 20
      */
-    const processSiblings = async (siblings: HierarchicalTocBlock[], parentNumberStr: string) => {
+    const processSiblings = async (
+        siblings: HierarchicalTocBlock[],
+        parentNumberStr: string,
+        categoryPrefix?: number
+    ) => {
         // 记录上一个非 skip 同级标题的序号（仅最后一段数字）
         let lastSiblingNumber = 0
 
@@ -340,12 +385,15 @@ const updateHierarchicalBlocks = async (
             lastSiblingNumber += 1
 
             // 构建完整编号
-            // H4 特殊格式：仅用序号，不带父级前缀
+            // H4 特殊格式：仅用序号+顿号，不带父级前缀
+            // 顶级标题且处于分类模式时：使用 categoryPrefix + 序号
             const currentFullNumber = level === 4
                 ? `${lastSiblingNumber}`
                 : (parentNumberStr
                     ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}`
-                    : `${lastSiblingNumber}`)
+                    : (categoryPrefix !== undefined
+                        ? `${categoryPrefix + lastSiblingNumber}`
+                        : `${lastSiblingNumber}`))
 
             // 处理标题文本
             const fullContent = node.content || ''
@@ -440,8 +488,19 @@ const updateHierarchicalBlocks = async (
         }
     }
 
-    // 从顶级标题开始处理
-    await processSiblings(headers, '')
+    // 顶级标题处理
+    // 分类模式：按区间依次处理，每个区间内的标题使用对应的编号前缀
+    if (categoryClassification && categoryRule && parentNumbers.length === 0) {
+        for (const cat of categoryRule.categories) {
+            const catHeaders = categoryClassification.get(cat.id) || []
+            if (catHeaders.length === 0) continue
+            const catPrefix = cat.id * 10
+            await processSiblings(catHeaders, '', catPrefix)
+        }
+    } else {
+        // 普通模式：所有标题作为同级顺序编号
+        await processSiblings(headers, '')
+    }
 }
 
 /**
@@ -459,6 +518,8 @@ const extractNumberFromHeading = (firstLine: string, delimiter: string): string 
  * 纯按钮触发模式下，无需处理模式切换逻辑，仅当 autoHeadingLevel 变更时需要重新加载设置面板
  */
 export const handleHeadingNumberingSettingsChanged = async (_newSet: any, _oldSet: any): Promise<boolean> => {
+    // 设置变更时清除规则缓存，下次重新编号时会重新加载
+    clearRuleCache()
     // 纯按钮触发模式，无需自动响应设置变更
     return false
 }
