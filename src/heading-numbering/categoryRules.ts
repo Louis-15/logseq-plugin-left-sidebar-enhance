@@ -17,12 +17,20 @@ import { HierarchicalTocBlock } from '../page-outline/findHeaders'
 
 // ==================== 类型定义 ====================
 
+/** 子标题固定编号规则（用于 H2/H3 级别的固定序号） */
+export interface SubHeadingRule {
+    number: number              // 固定序号（如 1, 2, 3...）
+    keywords: string[]          // 关键词列表（子串包含匹配）
+    subHeadings?: SubHeadingRule[]  // 嵌套子标题规则（用于更深层级）
+}
+
 /** 单个区间的定义 */
 export interface CategoryDef {
     id: number                    // 区间 ID（1-9），编号前缀 = id × 10
     name: string                  // 区间名称（用于调试和 UI 显示）
     keywords?: string[]           // 关键词列表（positionBased 为 true 时不需要）
     positionBased?: boolean       // 是否使用位置法分类（必须恰好一个区间为 true，且 id 为 1）
+    subHeadings?: SubHeadingRule[]  // 子标题固定编号规则（可选）
 }
 
 /** 一条完整的编号规则 */
@@ -324,3 +332,6 @@ const matchKeywords = (titleText: string, keywords: string[]): boolean => {
     }
     return false
 }
+
+// 重新导出为公共函数，供 index.ts 使用
+export { matchKeywords as matchRuleKeywords }

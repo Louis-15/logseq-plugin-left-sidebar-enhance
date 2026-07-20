@@ -8,7 +8,7 @@ import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTo
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
 import { loadConfigFromPage, getBlockState, setBlockState } from './blockStates'
-import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule } from './categoryRules'
+import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule, matchRuleKeywords, SubHeadingRule } from './categoryRules'
 
 let isFileBasedGraph = false
 
@@ -226,16 +226,37 @@ const updateHierarchicalBlocks = async (
     categoryRule?: CategoryRule
 ): Promise<void> => {
 
+    // 存储当前分类的子标题固定编号规则（用于 H1→H2 过渡）
+    let _nextLevelSubHeadingRules: SubHeadingRule[] | undefined = undefined
+
+    /**
+     * 将标题文本与子标题固定规则匹配
+     * @returns 匹配到的规则，或 undefined
+     */
+    const matchSubHeading = (hd: HierarchicalTocBlock, rules: SubHeadingRule[]): SubHeadingRule | undefined => {
+        const headingLine = (hd.content || '').split(/\r?\n/)[0] || ''
+        let titleText = headingLine.replace(/^#{1,6}\s+/, '')
+        titleText = titleText.replace(/^\d+(?:[.\-]\d+)*\s+/, '').trim()
+        for (const rule of rules) {
+            if (matchRuleKeywords(titleText, rule.keywords)) {
+                return rule
+            }
+        }
+        return undefined
+    }
+
     /**
      * 处理同级标题列表
      * @param siblings 同级标题数组
      * @param parentNumberStr 父标题的编号字符串（如 "6"）,顶级标题为空
      * @param categoryPrefix 区间编号前缀（仅顶级且分类模式时使用），如区间2传 20
+     * @param subHeadingRules 子标题固定编号规则（仅子标题层级使用）
      */
     const processSiblings = async (
         siblings: HierarchicalTocBlock[],
         parentNumberStr: string,
-        categoryPrefix?: number
+        categoryPrefix?: number,
+        subHeadingRules?: SubHeadingRule[]
     ) => {
         // 记录上一个非 skip 同级标题的序号（仅最后一段数字）
         let lastSiblingNumber = 0
@@ -254,8 +275,9 @@ const updateHierarchicalBlocks = async (
                 // 跳过此标题，不修改、不影响编号序列
                 // 但仍需递归处理其子标题
                 if (node.children && node.children.length > 0) {
-                    // skip 标题的子标题继承父级的编号前缀
-                    await processSiblings(node.children, parentNumberStr)
+                    // skip 标题的子标题继承父级的编号前缀；H1→H2 过渡时传入分类的子标题规则
+                    await processSiblings(node.children, parentNumberStr, undefined,
+                        categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
                 }
                 continue
             }
@@ -281,7 +303,8 @@ const updateHierarchicalBlocks = async (
                 // 递归处理锁定标题的子标题
                 if (node.children && node.children.length > 0) {
                     const currentFullNumber = extractedNumber || (parentNumberStr ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}` : `${lastSiblingNumber}`)
-                    await processSiblings(node.children, currentFullNumber)
+                    await processSiblings(node.children, currentFullNumber, undefined,
+                        categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
                 }
                 continue
             }
@@ -375,9 +398,78 @@ const updateHierarchicalBlocks = async (
                 // 注意：不递增 lastSiblingNumber，保持不变
                 // 递归处理子标题
                 if (node.children && node.children.length > 0) {
-                    await processSiblings(node.children, currentFullNumber)
+                    await processSiblings(node.children, currentFullNumber, undefined,
+                        categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
                 }
                 continue
+            }
+
+            // 2.6 子标题固定编号（关键词匹配）
+            // 仅在非顶级（H2/H3 层级，categoryPrefix 为 undefined）且有 subHeadingRules 时生效
+            if (subHeadingRules && subHeadingRules.length > 0 && categoryPrefix === undefined && parentNumberStr) {
+                const matchedRule = matchSubHeading(node, subHeadingRules)
+                if (matchedRule) {
+                    lastSiblingNumber = Math.max(lastSiblingNumber, matchedRule.number)
+                    const currentFullNumber = `${parentNumberStr}${newDelimiter}${matchedRule.number}`
+
+                    // 更新标题文本（内联，与自动编号逻辑一致）
+                    const fullContent2 = node.content || ''
+                    const lines2 = fullContent2.split(/\r?\n/)
+                    const firstLine2 = lines2.length > 0 ? lines2[0] : ''
+
+                    let oldNum2: string | null = null
+                    let textWithoutNum2: string = firstLine2
+                    if (level === 4) {
+                        const h4m = firstLine2.match(/^(#{4})\s+(\d+)、(.+)$/)
+                        if (h4m) { oldNum2 = h4m[2]; textWithoutNum2 = `${h4m[1]} ${h4m[3]}` }
+                    }
+                    if (!oldNum2) {
+                        const ext2 = extractOldNumber(firstLine2, oldDelimiter)
+                        oldNum2 = ext2.number; textWithoutNum2 = ext2.textWithoutNumber
+                    }
+                    if (!oldNum2) {
+                        const mm2 = firstLine2.match(MULTI_NUMBER_PATTERN)
+                        if (mm2) {
+                            const np2 = firstLine2.match(new RegExp(`^${escapeForRegex(mm2[1])}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
+                            if (np2) { oldNum2 = np2[1].trim(); textWithoutNum2 = `${mm2[1]} ${mm2[2]}` }
+                        }
+                    }
+                    if (!oldNum2) {
+                        const gen2 = extractGeneralNumber(firstLine2)
+                        if (gen2) {
+                            oldNum2 = gen2
+                            textWithoutNum2 = firstLine2.replace(new RegExp(`^(#{1,6})\\s+${escapeForRegex(gen2)}\\s+`), '$1 ')
+                        }
+                    }
+
+                    const normExp2 = normalizeNumberString(currentFullNumber, newDelimiter)
+                    const normOld2 = oldNum2 ? normalizeNumberString(oldNum2, newDelimiter) : null
+                    if (!oldNum2 || normOld2 !== normExp2) {
+                        const textOnly2 = textWithoutNum2.replace(HEADING_HASHES_GENERIC, '')
+                        if (textOnly2.trim()) {
+                            const ht2 = '#'.repeat(level)
+                            const newLine2 = level === 4
+                                ? `${ht2} ${currentFullNumber}、${textOnly2.trim()}`
+                                : `${ht2} ${currentFullNumber} ${textOnly2}`
+                            const newContent2 = [newLine2, ...lines2.slice(1)].join('\n')
+                            if (newContent2 !== fullContent2) {
+                                try {
+                                    await logseq.Editor.updateBlock(node.uuid, newContent2)
+                                    node.content = newContent2
+                                } catch (error) {
+                                    console.error(`更新固定编号块 ${node.uuid} 失败:`, error)
+                                }
+                            }
+                        }
+                    }
+
+                    // 递归：传递匹配规则的嵌套子规则
+                    if (node.children && node.children.length > 0) {
+                        await processSiblings(node.children, currentFullNumber, undefined, matchedRule.subHeadings)
+                    }
+                    continue
+                }
+                // 未匹配到固定规则则回退到顺序编号（下方 3. 自动编号）
             }
 
             // 3. 自动编号（无属性的普通标题）
@@ -483,7 +575,8 @@ const updateHierarchicalBlocks = async (
 
             // 递归处理子标题
             if (node.children && node.children.length > 0) {
-                await processSiblings(node.children, currentFullNumber)
+                await processSiblings(node.children, currentFullNumber, undefined,
+                    categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
             }
         }
     }
@@ -495,8 +588,11 @@ const updateHierarchicalBlocks = async (
             const catHeaders = categoryClassification.get(cat.id) || []
             if (catHeaders.length === 0) continue
             const catPrefix = cat.id * 10
+            // 设置当前分类的子标题固定编号规则（H1→H2 递归时自动传入）
+            _nextLevelSubHeadingRules = cat.subHeadings
             await processSiblings(catHeaders, '', catPrefix)
         }
+        _nextLevelSubHeadingRules = undefined
     } else {
         // 普通模式：所有标题作为同级顺序编号
         await processSiblings(headers, '')
