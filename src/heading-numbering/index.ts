@@ -405,12 +405,15 @@ const updateHierarchicalBlocks = async (
             }
 
             // 2.6 子标题固定编号（关键词匹配）
-            // 仅在非顶级（H2/H3 层级，categoryPrefix 为 undefined）且有 subHeadingRules 时生效
-            if (subHeadingRules && subHeadingRules.length > 0 && categoryPrefix === undefined && parentNumberStr) {
+            // 适用于：(有 categoryPrefix 的 H1 分类级) 或 (有 parentNumberStr 的 H2/H3 子级)
+            if (subHeadingRules && subHeadingRules.length > 0 && (categoryPrefix !== undefined || parentNumberStr)) {
                 const matchedRule = matchSubHeading(node, subHeadingRules)
                 if (matchedRule) {
                     lastSiblingNumber = Math.max(lastSiblingNumber, matchedRule.number)
-                    const currentFullNumber = `${parentNumberStr}${newDelimiter}${matchedRule.number}`
+                    // 分类级：categoryPrefix + 固定个位；子级：父编号.固定个位
+                    const currentFullNumber = categoryPrefix !== undefined
+                        ? `${categoryPrefix + matchedRule.number}`
+                        : `${parentNumberStr}${newDelimiter}${matchedRule.number}`
 
                     // 更新标题文本（内联，与自动编号逻辑一致）
                     const fullContent2 = node.content || ''
@@ -588,9 +591,9 @@ const updateHierarchicalBlocks = async (
             const catHeaders = categoryClassification.get(cat.id) || []
             if (catHeaders.length === 0) continue
             const catPrefix = cat.id * 10
-            // 设置当前分类的子标题固定编号规则（H1→H2 递归时自动传入）
+            // cat.subHeadings 用于 H1 分类级固定编号；_nextLevelSubHeadingRules 用于 H1→H2 递归
             _nextLevelSubHeadingRules = cat.subHeadings
-            await processSiblings(catHeaders, '', catPrefix)
+            await processSiblings(catHeaders, '', catPrefix, cat.subHeadings)
         }
         _nextLevelSubHeadingRules = undefined
     } else {
