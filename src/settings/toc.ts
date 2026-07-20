@@ -46,7 +46,7 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
                     title: '启用的区间编号规则',
                     type: 'string',
                     default: '人设标签',
-                    description: '每行一个规则名（tag 名）。只有列出的规则才会生效。留空则启用全部规则。规则文件通过 SandboxStorage 的 category-rule-{规则名} key 管理。',
+                    description: '每行一个规则名（tag 名）。只加载列出的规则，留空则默认加载「人设标签」。规则文件为插件目录下 category-rules/{规则名}.json（可直接编辑）。',
                     inputAs: 'textarea',
                 })
         }
