@@ -75,8 +75,9 @@ const badgeRule = (state: NumberingState): string => {
 .bullet-container[${ATTR}="${state}"] .bullet::before {
     content: "";
     display: block;
-    width: 0.85em;
-    height: 0.85em;
+    /* 相对圆点容器（16px）的百分比，避免跟随正文字号缩放而溢出容器 */
+    width: 85%;
+    height: 85%;
     background-color: currentColor;
     opacity: 0.8;
     -webkit-mask-image: ${url};
@@ -94,18 +95,90 @@ const badgeRule = (state: NumberingState): string => {
 /** 角标样式：把灰色小圆点替换成 SVG 图标 */
 const BADGE_CSS = `
 .bullet-container[${ATTR}] .bullet {
-    display: inline-flex !important;
+    display: flex !important;
     align-items: center;
     justify-content: center;
-    width: 1em !important;
-    height: 1em !important;
+    /* 容器是固定的 16px，所以用百分比而不是 em：
+       em 会跟随正文字号放大，最终撑破容器 */
+    width: 100% !important;
+    height: 100% !important;
     background-color: transparent !important;
-    border-radius: 0 !important;
     opacity: 1 !important;
-    font-size: 1em;
+    border-radius: 9999px !important;
     font-style: normal;
     line-height: 1;
     transition: none !important;
+}
+
+/* 抑制焦点轮廓与阴影
+ *
+ * 右键点击块圆点会打开上下文菜单，触发元素被聚焦后浏览器可能画出默认轮廓。
+ * 这里连同父级触发元素一起显式清除。
+ */
+.bullet-container[${ATTR}],
+.bullet-container[${ATTR}]:focus,
+.bullet-container[${ATTR}]:focus-visible,
+.bullet-container[${ATTR}]:focus-within,
+.bullet-container[${ATTR}] .bullet,
+.bullet-container[${ATTR}] .bullet:focus,
+.bullet-container[${ATTR}] .bullet:focus-visible,
+.bullet-container[${ATTR}] .bullet::before,
+.bullet-link-wrap[${ATTR}],
+.bullet-link-wrap[${ATTR}]:focus,
+.bullet-link-wrap[${ATTR}]:focus-visible,
+.bullet-link-wrap[${ATTR}]:focus-within,
+.block-control-wrap[${ATTR}],
+.block-control-wrap[${ATTR}]:focus,
+.block-control-wrap[${ATTR}]:focus-visible,
+.block-control-wrap[${ATTR}]:focus-within {
+    outline: none !important;
+    outline-offset: 0 !important;
+    box-shadow: none !important;
+}
+
+/* 悬停时保留容器高光，但不要把 .bullet 本身铺成实心
+ *
+ * Logseq 原生悬停规则：
+ *   .bullet-link-wrap:hover > .bullet-container:not(.typed-list) {
+ *     background-color: var(--ls-block-bullet-border-color);   ← 这层高光要保留
+ *     .bullet { transform: scale(1.2); background-color: ... !important; }
+ *   }
+ * 原生 .bullet 是 6px 的小圆点，铺底色就是"圆点变亮"；
+ * 但我们的 .bullet 已经被替换成图标画布（撑满 16px），铺底色会在图标背后
+ * 垫一个亮圆盘，把线稿冲淡。因此这里只中和 .bullet 的底色与缩放，
+ * 容器那层高光保持原样。
+ *
+ * 特异性：Logseq 那条是 (0,4,0) 且带 !important，
+ * 必须用带两个属性的选择器提到 (0,6,0) 才能压住。
+ */
+.bullet-link-wrap[${ATTR}]:hover > .bullet-container[${ATTR}] .bullet {
+    background-color: transparent !important;
+    transform: none !important;
+}
+/* 去掉「已选中」状态的 3px 边框
+ *
+ * Logseq 原生的选中指示来自 block.css / style.css：
+ *   .ls-block span.bullet-container:not(.as-order-list) .selected { border: 3px solid }
+ * 而 renderer 里 .bullet 在选中时会带上 selected 类：
+ *   [:span.bullet (when selected? {:blockid uuid :class "selected"})]
+ *
+ * 关键点：
+ * 1. border 没写颜色 → 使用 currentColor → 深色主题下就是白色
+ * 2. 原生 .bullet 只有 6px，这圈边框几乎看不出来；我们的图标撑满 1em，
+ *    边框就成了包住图标的白框（改圆角前是方框、之后是圆圈）
+ * 3. 这里只清边框，不动 background-color，因此悬停高光保持原样
+ *
+ * 特异性说明：Logseq 那条是 (0,4,1)，所以必须用带两个属性的选择器把权重提到 (0,6,0)。
+ */
+.bullet-link-wrap[${ATTR}] > .bullet-container[${ATTR}] .bullet.selected,
+.bullet-container[${ATTR}] .bullet.selected {
+    border: none !important;
+}
+
+/* 选中反馈改为「图标更实一档」，避免清掉边框后完全没有状态提示 */
+.bullet-link-wrap[${ATTR}] > .bullet-container[${ATTR}] .bullet.selected::before,
+.bullet-container[${ATTR}] .bullet.selected::before {
+    opacity: 1;
 }
 ${(['skip', 'skip-subtree', 'repeat', 'locked'] as NumberingState[]).map(badgeRule).join('')}`
 
@@ -151,10 +224,21 @@ export const applyBulletBadges = (): void => {
             || ''
         const state = uuid ? cache.get(uuid) : undefined
 
-        if (state) {
-            if (container.getAttribute(ATTR) !== state) container.setAttribute(ATTR, state)
-        } else if (container.hasAttribute(ATTR)) {
-            container.removeAttribute(ATTR)
+        // 右键打开上下文菜单时，焦点可能落到下面任意一层，因此三层都打标记，
+        // 才能用 CSS 把焦点轮廓清干净（只影响圆点区域，不波及正文编辑区）
+        const targets = [
+            container,
+            container.closest('.bullet-link-wrap'),
+            container.closest('.block-control-wrap'),
+        ]
+
+        for (const el of targets) {
+            if (!el) continue
+            if (state) {
+                if (el.getAttribute(ATTR) !== state) el.setAttribute(ATTR, state)
+            } else if (el.hasAttribute(ATTR)) {
+                el.removeAttribute(ATTR)
+            }
         }
     })
 }
