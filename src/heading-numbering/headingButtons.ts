@@ -140,7 +140,7 @@ const toggleNumberingState = async (blockUuid: string, target: NumberingState) =
 
 // ==================== 编号文本处理 ====================
 
-// 标题判断、年份保护、编号剥离规则统一由 headingText.ts 提供，
+// 标题判断、多位数字保护、编号剥离规则统一由 headingText.ts 提供，
 // 避免与编号算法（index.ts）各自实现导致规则漂移
 
 /**

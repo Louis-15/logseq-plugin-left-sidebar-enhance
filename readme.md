@@ -33,7 +33,7 @@ Manually add hierarchical numbers (e.g., `1`, `1.1`, `1.1.1`) to Markdown headin
   - **Lock** (`locked`) — Keep the current number unchanged; subsequent siblings increment from it
   - **Repeat** (`repeat`) — Use the same number as the previous sibling
 - **State follows the block** → Copy/move a block and its numbering state goes with it, across graphs
-- **Year guard** → Headings starting with a 4-digit year (e.g. `2023`) are treated as text, not numbering
+- **Multi-digit guard** → Leading numbers of 3+ digits (`100`–`9999`) are treated as text while the heading is still numbered (`## 2002 的` → `## 1 2002 的`)
 - **Queryable** → Works with property queries such as `{{query (property numbering skip)}}`
 
 ### 3. Auto-Adjust Heading Levels (File-Based Graphs Only)

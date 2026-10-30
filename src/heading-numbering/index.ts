@@ -8,7 +8,14 @@ import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTo
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
 import { parseNumberingState, getBlockNumberingState, setBlockNumberingState, NumberingState } from './blockStates'
-import { isYearLeadingHeading, stripNumberFromContent } from './headingText'
+import {
+    stripNumberFromContent,
+    escapeForRegex,
+    MULTI_NUMBER_PATTERN,
+    extractOldNumber,
+    extractGeneralNumber,
+    parseHeadingPrefix,
+} from './headingText'
 import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule, matchRuleKeywords, SubHeadingRule } from './categoryRules'
 
 let isFileBasedGraph = false
@@ -35,23 +42,6 @@ export const setBlockHeadingState = async (blockUuid: string, state: NumberingSt
 const HEADING_HASHES_GENERIC = /^#+\s+/
 const HEADING_HASHES_PATTERN = /^#{1,6}\s+/
 const HEADING_HASHES_ONLY_PATTERN = /^#{1,6}/
-const MULTI_NUMBER_PATTERN = /^(#{1,6})\s+(?:\d+[\d\.\-_\s→]*)+\s+(.+)$/
-
-const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/**
- * 判断一个数字串是否像年份（1900–2099）
- *
- * 插件生成的编号最多两三位（顶级编号上限约 79，区间编号最大 79），
- * 不可能出现 1900 以上的 4 位数，因此把这类数字一律视为正文里的年份，
- * 避免 "## 2023 年总结" 被当成 "编号 2023" 吃掉。
- */
-const isYearLikeNumber = (num: string): boolean => /^(19|20)\d{2}$/.test(num)
-
-const createExtractOldNumberRegex = (oldDelimiter: string) => {
-    const escapedDelimiter = escapeForRegex(oldDelimiter)
-    return new RegExp(`^(#{1,6})\\s+(\\d+(?:${escapedDelimiter}\\d+)*${escapedDelimiter}?)\\s+(.+)$`)
-}
 
 // Normalize numeric string to use the given delimiter and collapse extras
 const normalizeNumberString = (num: string, delimiter: string) => {
@@ -62,19 +52,6 @@ const normalizeNumberString = (num: string, delimiter: string) => {
     const collapse = replaced.replace(new RegExp(`${escapeForRegex(delimiter)}{2,}`, 'g'), delimiter)
     // Remove leading/trailing delimiters
     return collapse.replace(new RegExp(`^${escapeForRegex(delimiter)}|${escapeForRegex(delimiter)}$`, 'g'), '')
-}
-
-// Extract a general number sequence after hashes when delimiter-specific extract fails
-const extractGeneralNumber = (content: string): string | null => {
-    const m = content.match(/^(?:#{1,6})\s+([0-9][0-9\.\-\_\s→]*)/)
-    if (!m) return null
-
-    const num = m[1].trim()
-    // 年份保护：首段是 4 位年份时视为正文，不当作编号
-    const firstToken = num.split(/[.\-_\s→]+/)[0]
-    if (isYearLikeNumber(firstToken)) return null
-
-    return num
 }
 
 /**
@@ -114,48 +91,6 @@ const detectFileBasedGraph = async (): Promise<boolean> => {
 export const isPageActive = (_pageUuid: string): boolean => {
     return true
 }
-
-/**
- * Extract heading number from content using old delimiter
- * This function detects if a heading already has numbering and extracts it
- */
-const extractOldNumber = (content: string, oldDelimiter: string): { number: string | null, textWithoutNumber: string } => {
-    // Pattern to match: "# 1.2.3 Text" or "## 1.2 Text" or "### 3.1 Text" etc.
-    // Use helper to create regex with escaped delimiter
-    const pattern = createExtractOldNumberRegex(oldDelimiter)
-    const match = content.match(pattern)
-
-    if (match) {
-        const hashTags = match[1]
-        let number = match[2]
-        const text = match[3]
-
-        // Remove trailing delimiter if present
-        if (number.endsWith(oldDelimiter)) {
-            number = number.slice(0, -oldDelimiter.length)
-        }
-
-        // 年份保护：4 位年份不是插件生成的编号，按“无编号”处理，
-        // 同时保留原始内容，避免后续重写时吞掉年份
-        if (isYearLikeNumber(number)) {
-            return {
-                number: null,
-                textWithoutNumber: content
-            }
-        }
-
-        return {
-            number,
-            textWithoutNumber: `${hashTags} ${text}`
-        }
-    }
-
-    return {
-        number: null,
-        textWithoutNumber: content
-    }
-}
-
 
 /**
  * Apply heading numbers to page blocks (file-update mode)
@@ -360,18 +295,6 @@ const updateHierarchicalBlocks = async (
                 continue
             }
 
-            // 1.2 年份保护
-            // 标题以 4 位年份开头时视为普通正文：不编号、不占序号、不改写文本
-            // 例如 "## 2023 年总结" 不能被改写成 "## 1 年总结"
-            if (isYearLeadingHeading(node.content)) {
-                if (node.children && node.children.length > 0) {
-                    // 子标题仍按父级编号前缀继续
-                    await processSiblings(node.children, parentNumberStr, undefined,
-                        categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
-                }
-                continue
-            }
-
             // 1.5 单块豁免检测
             if (headingNumProp === 'skip') {                // 跳过此标题，不修改、不影响编号序列
                 // 但仍需递归处理其子标题
@@ -429,49 +352,8 @@ const updateHierarchicalBlocks = async (
                 const lines = fullContent.split(/\r?\n/)
                 const firstLine = lines.length > 0 ? lines[0] : ''
 
-                // H4 专用：先尝试匹配 n、标题 格式
-                let oldNumber: string | null = null
-                let textWithoutNumber: string = firstLine
-                if (level === 4) {
-                    const h4Match = firstLine.match(/^(#{4})\s+(\d+)、(.+)$/)
-                    if (h4Match) {
-                        oldNumber = h4Match[2]
-                        textWithoutNumber = `${h4Match[1]} ${h4Match[3]}`
-                    }
-                }
-                if (!oldNumber) {
-                    const extracted = extractOldNumber(firstLine, oldDelimiter)
-                    oldNumber = extracted.number
-                    textWithoutNumber = extracted.textWithoutNumber
-                }
-                if (!oldNumber) {
-                    const mm = firstLine.match(MULTI_NUMBER_PATTERN)
-                    if (mm) {
-                        const hashTags = mm[1]
-                        const restText = mm[2]
-                        const numPartMatch = firstLine.match(new RegExp(`^${escapeForRegex(hashTags)}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
-                        const numPart = numPartMatch ? numPartMatch[1].trim() : null
-                        if (numPart) {
-                            oldNumber = numPart
-                            textWithoutNumber = `${hashTags} ${restText}`
-                        }
-                    }
-                    if (!oldNumber) {
-                        const h4FallbackMatch = firstLine.match(/^(#{1,6})\s+(\d+)、(.+)$/)
-                        if (h4FallbackMatch) {
-                            oldNumber = h4FallbackMatch[2]
-                            textWithoutNumber = `${h4FallbackMatch[1]} ${h4FallbackMatch[3]}`
-                        }
-                    }
-                    // 回退匹配：处理从 H4 改为其他级别时残留的"n、"顿号格式
-                    if (!oldNumber) {
-                        const gen = extractGeneralNumber(firstLine)
-                        if (gen) {
-                            oldNumber = gen
-                            textWithoutNumber = firstLine.replace(new RegExp(`^(#{1,6})\\s+${escapeForRegex(gen)}\\s+`), '$1 ')
-                        }
-                    }
-                }
+                // 统一解析旧编号（含年份保护）
+                const { oldNumber, textWithoutNumber } = parseHeadingPrefix(firstLine, level, oldDelimiter)
 
                 const normalizedExpected = normalizeNumberString(currentFullNumber, newDelimiter)
                 const normalizedOld = oldNumber ? normalizeNumberString(oldNumber, newDelimiter) : null
@@ -521,30 +403,9 @@ const updateHierarchicalBlocks = async (
                     const lines2 = fullContent2.split(/\r?\n/)
                     const firstLine2 = lines2.length > 0 ? lines2[0] : ''
 
-                    let oldNum2: string | null = null
-                    let textWithoutNum2: string = firstLine2
-                    if (level === 4) {
-                        const h4m = firstLine2.match(/^(#{4})\s+(\d+)、(.+)$/)
-                        if (h4m) { oldNum2 = h4m[2]; textWithoutNum2 = `${h4m[1]} ${h4m[3]}` }
-                    }
-                    if (!oldNum2) {
-                        const ext2 = extractOldNumber(firstLine2, oldDelimiter)
-                        oldNum2 = ext2.number; textWithoutNum2 = ext2.textWithoutNumber
-                    }
-                    if (!oldNum2) {
-                        const mm2 = firstLine2.match(MULTI_NUMBER_PATTERN)
-                        if (mm2) {
-                            const np2 = firstLine2.match(new RegExp(`^${escapeForRegex(mm2[1])}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
-                            if (np2) { oldNum2 = np2[1].trim(); textWithoutNum2 = `${mm2[1]} ${mm2[2]}` }
-                        }
-                    }
-                    if (!oldNum2) {
-                        const gen2 = extractGeneralNumber(firstLine2)
-                        if (gen2) {
-                            oldNum2 = gen2
-                            textWithoutNum2 = firstLine2.replace(new RegExp(`^(#{1,6})\\s+${escapeForRegex(gen2)}\\s+`), '$1 ')
-                        }
-                    }
+                    // 统一解析旧编号（含年份保护）
+                    const { oldNumber: oldNum2, textWithoutNumber: textWithoutNum2 } =
+                        parseHeadingPrefix(firstLine2, level, oldDelimiter)
 
                     const normExp2 = normalizeNumberString(currentFullNumber, newDelimiter)
                     const normOld2 = oldNum2 ? normalizeNumberString(oldNum2, newDelimiter) : null
@@ -597,52 +458,8 @@ const updateHierarchicalBlocks = async (
             const firstLine = lines.length > 0 ? lines[0] : ''
 
             // 提取旧编号（如果有）
-            // H4 专用：先尝试匹配 n、标题 格式（顿号分隔、无空格）
-            let oldNumber: string | null = null
-            let textWithoutNumber: string = firstLine
-            if (level === 4) {
-                const h4Match = firstLine.match(/^(#{4})\s+(\d+)、(.+)$/)
-                if (h4Match) {
-                    oldNumber = h4Match[2]
-                    textWithoutNumber = `${h4Match[1]} ${h4Match[3]}`
-                }
-            }
-            // 通用提取（H1-H3 或 H4 顿号匹配失败时回退）
-            if (!oldNumber) {
-                const extracted = extractOldNumber(firstLine, oldDelimiter)
-                oldNumber = extracted.number
-                textWithoutNumber = extracted.textWithoutNumber
-            }
-
-            // 如果分隔符提取失败，尝试通用提取
-            if (!oldNumber) {
-                const mm = firstLine.match(MULTI_NUMBER_PATTERN)
-                if (mm) {
-                    const hashTags = mm[1]
-                    const restText = mm[2]
-                    const numPartMatch = firstLine.match(new RegExp(`^${escapeForRegex(hashTags)}\\s+([0-9\\.\\-\\_\\s→]+)\\s+`))
-                    const numPart = numPartMatch ? numPartMatch[1].trim() : null
-                    if (numPart) {
-                        oldNumber = numPart
-                        textWithoutNumber = `${hashTags} ${restText}`
-                    }
-                }
-                if (!oldNumber) {
-                    const h4FallbackMatch = firstLine.match(/^(#{1,6})\s+(\d+)、(.+)$/)
-                    if (h4FallbackMatch) {
-                        oldNumber = h4FallbackMatch[2]
-                        textWithoutNumber = `${h4FallbackMatch[1]} ${h4FallbackMatch[3]}`
-                    }
-                }
-                // 回退匹配：处理从 H4 改为其他级别时残留的"n、"顿号格式
-            if (!oldNumber) {
-                    const gen = extractGeneralNumber(firstLine)
-                    if (gen) {
-                        oldNumber = gen
-                        textWithoutNumber = firstLine.replace(new RegExp(`^(#{1,6})\\s+${escapeForRegex(gen)}\\s+`), '$1 ')
-                    }
-                }
-            }
+            // 统一解析旧编号（含年份保护）
+            const { oldNumber, textWithoutNumber } = parseHeadingPrefix(firstLine, level, oldDelimiter)
 
             // 比较当前编号与期望编号
             const normalizedExpected = normalizeNumberString(currentFullNumber, newDelimiter)
