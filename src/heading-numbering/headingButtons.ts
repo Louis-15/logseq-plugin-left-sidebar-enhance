@@ -42,15 +42,17 @@ interface CleanupStats {
  * 初始化标题右键菜单功能（仅注册菜单项，无后台监控）
  */
 export const initHeadingButtons = () => {
-    // 隐藏块属性面板中的 numbering 属性
-    // 这是 config.edn 未配置 :block-hidden-properties 时的兜底方案：
-    // 阅读态看不到属性面板里的这一行，但进入块编辑时仍会看到原始文本
-    // 注意：拆成两条规则，避免旧版 Electron 不支持 :has() 时整条规则被丢弃
+    // 兜底隐藏块属性面板中的 numbering 行
+    // 注意：
+    // 1. 只按 [data-ref] 隐藏键名会留下 ": skip" 这种半截显示，因此必须隐藏整行
+    // 2. 整行隐藏依赖 :has()，无法用 CSS 从子元素反选父级
+    // 3. 真正彻底隐藏（连编辑态也不显示）只能靠 config.edn：
+    //    :block-hidden-properties #{:numbering}
     logseq.provideStyle(`
-        .block-properties [data-ref="numbering"] {
-            display: none !important;
-        }
-        .block-properties .property-pair:has([data-ref="numbering"]) {
+        .ls-block-properties .property-pair:has([data-ref="numbering"]),
+        .ls-properties-area .property-pair:has([data-ref="numbering"]),
+        .block-properties .property-pair:has([data-ref="numbering"]),
+        .property-pair:has([data-ref="numbering"]) {
             display: none !important;
         }
     `)
