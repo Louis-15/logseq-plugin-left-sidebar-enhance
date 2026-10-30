@@ -12,6 +12,7 @@ import { loadLogseqL10n } from "./translations/l10nSetup" //https://github.com/s
 import { initHeadingNumbering } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
+import { refreshPageBulletBadges, cleanupBulletBadges } from './heading-numbering/bulletBadges'
 import { initAutoHeadingLevel } from './auto-heading-level'
 
 // 当前页面原始名称（全局状态，供各模块读取）
@@ -93,6 +94,7 @@ const main = async () => {
     removeContainer("lse-dataSelector-container")
     removeToolbarIcon()
     cleanupHeadingButtons()
+    cleanupBulletBadges()
     parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
@@ -126,6 +128,9 @@ export const onPageChangedCallback = async (pageName: string, flag?: { zoomIn: b
         updateToolbarIcon(pageName, currentPageUuid)
         parent.document.documentElement.classList.add('lse-heading-enabled')
     }
+
+    // 3. 刷新块圆点状态角标（▶️ ⏩ ♻️ 🔒）
+    await refreshPageBulletBadges(pageName)
   }, 50)
 
 }

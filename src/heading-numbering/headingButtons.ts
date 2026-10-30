@@ -10,6 +10,7 @@
 
 import { getBlockNumberingState, setBlockNumberingState, parseNumberingState, NumberingState } from './blockStates'
 import { isHeadingContent, stripNumberFromContent } from './headingText'
+import { refreshPageBulletBadges } from './bulletBadges'
 import { applyHeadingNumbersToPage } from './index'
 
 /** 菜单项统一前缀 */
@@ -273,6 +274,8 @@ const retriggerNumbering = async () => {
         // 延迟执行，确保属性写入与子树清理已落盘
         await new Promise(resolve => setTimeout(resolve, 300))
         await applyHeadingNumbersToPage(pageName)
+        // 再刷新一次圆点角标：即使编号流程因图谱类型提前返回，状态图标也要更新
+        await refreshPageBulletBadges(pageName)
     }
 }
 

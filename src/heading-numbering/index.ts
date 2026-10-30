@@ -17,6 +17,7 @@ import {
     parseHeadingPrefix,
 } from './headingText'
 import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule, matchRuleKeywords, SubHeadingRule } from './categoryRules'
+import { initBulletBadges, updateBadgeCacheFromBlocks, applyBulletBadges } from './bulletBadges'
 
 let isFileBasedGraph = false
 
@@ -66,6 +67,9 @@ export const initHeadingNumbering = async () => {
     // 确保默认分类规则存在并加载规则
     await ensureDefaultRule()
     await loadAllCategoryRules()
+
+    // 块圆点状态角标（▶️ ⏩ ♻️ 🔒）
+    initBulletBadges()
 }
 
 /**
@@ -115,6 +119,10 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
         // Get all blocks from the page
         const pageBlocks = await logseq.Editor.getPageBlocksTree(pageName)
         if (!pageBlocks) return
+
+        // 顺便刷新圆点角标缓存（复用同一份块树，避免额外请求）
+        updateBadgeCacheFromBlocks(pageBlocks as any)
+        applyBulletBadges()
 
         // === 新增：检测页面是否匹配区间分类规则 ===
         let categoryClassification: Map<number, HierarchicalTocBlock[]> | undefined
