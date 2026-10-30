@@ -7,27 +7,27 @@ import { booleanLogseqVersionMd } from '..'
 import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTocBlock } from '../page-outline/findHeaders'
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
-import { loadConfigFromPage, getBlockState, setBlockState } from './blockStates'
+import { parseNumberingState, getBlockNumberingState, setBlockNumberingState, NumberingState } from './blockStates'
 import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule, matchRuleKeywords, SubHeadingRule } from './categoryRules'
 
 let isFileBasedGraph = false
 
-// === 块编号状态管理（存储在图谱配置页面中，按图谱隔离）===
+// === 块编号状态管理（存储为 Logseq 原生块属性 numbering::）===
 
 /**
- * 获取块的编号状态（skip / lock / repeat / undefined）
- * 从图谱级配置页面的内存缓存中读取
+ * 获取块的编号状态（异步，右键菜单使用）
+ * 状态保存在块属性中，不再有外挂缓存
  */
-export const getBlockHeadingState = (blockUuid: string): string | undefined => {
-    return getBlockState(blockUuid)
+export const getBlockHeadingState = async (blockUuid: string): Promise<NumberingState | null> => {
+    return getBlockNumberingState(blockUuid)
 }
 
 /**
  * 设置块的编号状态
- * 写入图谱级配置页面（同时更新内存缓存和持久化存储）
+ * 写入块属性 numbering::，传 null 表示清除
  */
-export const setBlockHeadingState = async (blockUuid: string, state: string | null): Promise<void> => {
-    await setBlockState(blockUuid, state)
+export const setBlockHeadingState = async (blockUuid: string, state: NumberingState | null): Promise<void> => {
+    await setBlockNumberingState(blockUuid, state)
 }
 
 // Top-level regular expressions and helpers
@@ -62,15 +62,13 @@ const extractGeneralNumber = (content: string): string | null => {
 
 /**
  * 初始化标题编号功能
- * 检测图谱类型并加载编号配置（块状态）
+ * 检测图谱类型并加载分类规则
  */
 export const initHeadingNumbering = async () => {
     // 检测当前图谱是否为基于文件的本地图谱
     isFileBasedGraph = await detectFileBasedGraph()
 
-    // 从沙箱存储加载块状态
-    await loadConfigFromPage()
-
+    // 编号状态已改为块属性，无需启动时加载任何配置文件
     // 确保默认分类规则存在并加载规则
     await ensureDefaultRule()
     await loadAllCategoryRules()
@@ -267,10 +265,19 @@ const updateHierarchicalBlocks = async (
             // 跳过 5 级及以上标题，不参与编号
             if (level > 4) continue
 
-            // 从插件设置读取编号状态（而非 block properties）
-            const headingNumProp = getBlockHeadingState(node.uuid)
+            // 从块属性读取编号状态（properties 已由块树透传，零额外 API 调用）
+            const headingNumProp = parseNumberingState(
+                node.properties as Record<string, unknown> | undefined,
+                node.content
+            )
 
-            // 1. 豁免检测（最高优先级）
+            // 1. 整棵子树豁免（最高优先级）
+            // skip-subtree：自身与所有后代都不编号、不修改文本，直接终止递归
+            if (headingNumProp === 'skip-subtree') {
+                continue
+            }
+
+            // 1.5 单块豁免检测
             if (headingNumProp === 'skip') {
                 // 跳过此标题，不修改、不影响编号序列
                 // 但仍需递归处理其子标题
@@ -282,8 +289,8 @@ const updateHierarchicalBlocks = async (
                 continue
             }
 
-            // 2. 锁定检测（仅 lock）
-            if (headingNumProp === 'lock') {
+            // 2. 锁定检测（locked）
+            if (headingNumProp === 'locked') {
                 // 不修改标题文本，但提取其编号供后续兄弟参考
                 const fullContent = node.content || ''
                 const lines = fullContent.split(/\r?\n/)
@@ -658,15 +665,18 @@ export const cleanupPageHeadingNumbers = async (pageName: string, oldDelimiter: 
                 let cleanedText = ''
                 let hashTags = ''
 
-                // 获取当前块用户设置的状态：'skip' | 'lock' | 'repeat' | null
-                const state = getBlockHeadingState(header.uuid)
-                const isLockedOrRepeat = state === 'lock' || state === 'repeat'
+                // 获取当前块用户设置的状态：'skip' | 'skip-subtree' | 'repeat' | 'locked' | null
+                const state = parseNumberingState(
+                    header.properties as Record<string, unknown> | undefined,
+                    header.content
+                )
+                const isLockedOrRepeat = state === 'locked' || state === 'repeat'
 
                 // H4 专用匹配
                 const h4Match = header.level === 4 ? firstLine.match(/^(#{4})\s+(\d+)、\s*(.+)$/) : null
 
                 if (isLockedOrRepeat) {
-                    // 处于 lock 或 repeat 状态的标题不进行清理
+                    // 处于 locked 或 repeat 状态的标题不进行清理
                     shouldClean = false
                 } else if (h4Match) {
                     shouldClean = true

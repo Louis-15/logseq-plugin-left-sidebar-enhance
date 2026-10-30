@@ -1,115 +1,107 @@
 /**
  * 标题编号右键菜单模块
- * 
- * 将跳过、锁定、重号功能集成到 Logseq 原始块前方的小圆点右键菜单中
- * 纯按钮触发模式，不再有后台指示器轮询
+ *
+ * 编号状态写入块属性 numbering::（skip / skip-subtree / repeat / locked），
+ * 不再使用外挂 JSON 白名单。纯按钮触发模式，无后台监听。
+ *
+ * 菜单文案统一加「编号：」前缀，让四项在右键菜单里看起来属于同一组功能。
+ * 属性被隐藏后用户看不到当前状态，因此每次操作都用 showMsg 明确播报结果。
  */
 
-import { getBlockHeadingState, setBlockHeadingState, applyHeadingNumbersToPage } from './index'
+import { getBlockNumberingState, setBlockNumberingState, NumberingState } from './blockStates'
+import { applyHeadingNumbersToPage } from './index'
+
+/** 菜单项统一前缀 */
+const MENU_PREFIX = '编号：'
+
+/** 状态值 → 中文说明，用于操作提示 */
+const STATE_LABELS: Record<NumberingState, string> = {
+    'skip': '跳过编号',
+    'skip-subtree': '跳过整棵子树',
+    'repeat': '重复上一个编号',
+    'locked': '锁定编号',
+}
 
 /**
  * 初始化标题右键菜单功能（仅注册菜单项，无后台监控）
  */
 export const initHeadingButtons = () => {
-    // 隐藏残留的 block properties 显示（这个在 iframe 内生效即可）
+    // 隐藏块属性面板中的 numbering 属性
+    // 这是 config.edn 未配置 :block-hidden-properties 时的兜底方案：
+    // 阅读态看不到属性面板里的这一行，但进入块编辑时仍会看到原始文本
+    // 注意：拆成两条规则，避免旧版 Electron 不支持 :has() 时整条规则被丢弃
     logseq.provideStyle(`
-        .block-properties [data-ref="heading-num"],
-        .block-properties .property-pair:has([data-ref="heading-num"]) {
+        .block-properties [data-ref="numbering"] {
+            display: none !important;
+        }
+        .block-properties .property-pair:has([data-ref="numbering"]) {
             display: none !important;
         }
     `)
 
-    // 注入菜单项 1：跳过/恢复自动编号
-    logseq.Editor.registerBlockContextMenuItem('跳过/恢复自动编号', async (e) => {
+    // 四个状态互斥，菜单项之间允许直接覆盖切换
+    logseq.Editor.registerBlockContextMenuItem(`${MENU_PREFIX}跳过`, async (e) => {
         if (!e.uuid) return
-        await handleSkip(e.uuid)
+        await toggleNumberingState(e.uuid, 'skip')
     })
 
-    // 注入菜单项 2：锁定编号/取消锁定
-    logseq.Editor.registerBlockContextMenuItem('锁定编号/取消锁定', async (e) => {
+    logseq.Editor.registerBlockContextMenuItem(`${MENU_PREFIX}跳过整棵子树`, async (e) => {
         if (!e.uuid) return
-        await handleLock(e.uuid)
+        await toggleNumberingState(e.uuid, 'skip-subtree')
     })
 
-    // 注入菜单项 3：重复编号/取消重复
-    logseq.Editor.registerBlockContextMenuItem('重复编号/取消重复', async (e) => {
+    logseq.Editor.registerBlockContextMenuItem(`${MENU_PREFIX}重复上一个`, async (e) => {
         if (!e.uuid) return
-        await handleRepeat(e.uuid)
+        await toggleNumberingState(e.uuid, 'repeat')
+    })
+
+    logseq.Editor.registerBlockContextMenuItem(`${MENU_PREFIX}锁定`, async (e) => {
+        if (!e.uuid) return
+        await toggleNumberingState(e.uuid, 'locked')
     })
 }
 
 // ==================== 菜单操作处理 ====================
 
 /**
- * 处理"跳过"按钮点击
- * - 设置 skip 状态 + 移除标题中已有的编号 + 重新编号全页
- * - 再次点击取消跳过
+ * 切换某个编号状态
+ *
+ * 规则：
+ * - 当前已是目标状态 → 清除属性，恢复自动编号
+ * - 当前是其他状态或没有状态 → 直接覆盖为目标状态（无需先取消）
+ *
+ * ⚠️ 顺序约束：必须先写属性，再重新读取块、移除标题里的旧编号。
+ * 否则 updateBlock 会用不含属性行的旧 content 把刚写入的属性覆盖掉。
  */
-const handleSkip = async (blockUuid: string) => {
+const toggleNumberingState = async (blockUuid: string, target: NumberingState) => {
     const block = await logseq.Editor.getBlock(blockUuid)
     if (!block || !block.content.match(/^#{1,6}\s+/)) {
-        await logseq.UI.showMsg('该块不是标题，无法应用自动编号属性', 'warning', { timeout: 2000 })
+        await logseq.UI.showMsg('该块不是标题，无法设置编号状态', 'warning', { timeout: 2000 })
         return
     }
 
-    const current = getBlockHeadingState(blockUuid)
-    if (current === 'skip') {
-        // 取消跳过
-        await setBlockHeadingState(blockUuid, null)
-        logseq.UI.showMsg('已取消跳过', 'info', { timeout: 1500 })
-    } else {
-        // 【关键】先写入状态，再修改块内容，避免 onChanged 竞态
-        await setBlockHeadingState(blockUuid, 'skip')
-        await removeNumberFromBlock(blockUuid)
-        logseq.UI.showMsg('已跳过编号', 'success', { timeout: 1500 })
-    }
-    await cleanupBlockProperty(blockUuid)
-    await retriggerNumbering()
-}
+    const current = await getBlockNumberingState(blockUuid)
 
-/**
- * 处理"锁定"按钮点击
- */
-const handleLock = async (blockUuid: string) => {
-    const block = await logseq.Editor.getBlock(blockUuid)
-    if (!block || !block.content.match(/^#{1,6}\s+/)) {
-        await logseq.UI.showMsg('该块不是标题，无法应用自动编号属性', 'warning', { timeout: 2000 })
+    try {
+        if (current === target) {
+            await setBlockNumberingState(blockUuid, null)
+            await logseq.UI.showMsg(`已取消${STATE_LABELS[target]}`, 'info', { timeout: 1500 })
+        } else {
+            await setBlockNumberingState(blockUuid, target)
+            // 跳过类状态：移除该块标题里已经存在的编号
+            // （skip-subtree 的子块清理在第二步实现）
+            if (target === 'skip' || target === 'skip-subtree') {
+                await removeNumberFromBlock(blockUuid)
+            }
+            await logseq.UI.showMsg(`已设为${STATE_LABELS[target]}`, 'success', { timeout: 1800 })
+        }
+    } catch (e) {
+        console.error('[LSE] 设置编号状态失败:', e)
+        await logseq.UI.showMsg('设置编号状态失败，请查看控制台', 'error')
         return
     }
 
-    const current = getBlockHeadingState(blockUuid)
-    if (current === 'lock') {
-        await setBlockHeadingState(blockUuid, null)
-        logseq.UI.showMsg('已取消锁定', 'info', { timeout: 1500 })
-    } else {
-        await setBlockHeadingState(blockUuid, 'lock')
-        logseq.UI.showMsg('已锁定当前编号状态', 'success', { timeout: 1500 })
-    }
-    await cleanupBlockProperty(blockUuid)
-    await retriggerNumbering()
-}
-
-/**
- * 处理"重号"按钮点击
- * - 已标记为 repeat → 取消重复，恢复自动编号
- * - 未标记 → 设置 repeat 状态，编号算法会自动动态跟随前一个同级兄弟的编号
- */
-const handleRepeat = async (blockUuid: string) => {
-    const block = await logseq.Editor.getBlock(blockUuid)
-    if (!block || !block.content.match(/^#{1,6}\s+/)) {
-        await logseq.UI.showMsg('该块不是标题，无法重号', 'warning', { timeout: 2000 })
-        return
-    }
-
-    const current = getBlockHeadingState(blockUuid)
-    if (current === 'repeat') {
-        await setBlockHeadingState(blockUuid, null)
-        logseq.UI.showMsg('已取消重复编号', 'info', { timeout: 1500 })
-    } else {
-        // 仅设置状态标记，编号算法会在 retriggerNumbering 中自动处理
-        await setBlockHeadingState(blockUuid, 'repeat')
-        logseq.UI.showMsg('已设为重复编号（动态跟随前一个标题）', 'success', { timeout: 2000 })
-    }
+    // 清理旧版本遗留的 heading-num 属性（如果存在）
     await cleanupBlockProperty(blockUuid)
     await retriggerNumbering()
 }
@@ -119,6 +111,9 @@ const handleRepeat = async (blockUuid: string) => {
 /**
  * 从标题块中移除编号数字（保留 # 号和正文）
  * 例如 "## 2.6 你干嘛" → "## 你干嘛"
+ *
+ * 注意：调用前必须重新 getBlock，确保拿到的是写入属性后的最新 content，
+ * 否则会丢掉 numbering:: 属性行。
  */
 const removeNumberFromBlock = async (blockUuid: string) => {
     const block = await logseq.Editor.getBlock(blockUuid)
@@ -151,7 +146,7 @@ const removeNumberFromBlock = async (blockUuid: string) => {
 }
 
 /**
- * 清理残留的 block property（如果之前用过 block properties 方案）
+ * 清理残留的 block property（旧版本用过 heading-num 属性方案）
  */
 const cleanupBlockProperty = async (blockUuid: string) => {
     try {
@@ -169,37 +164,10 @@ const retriggerNumbering = async () => {
     if (!page) return
     const pageName = (page.originalName || page.name || '') as string
     if (pageName) {
-        // 延迟执行，确保状态已保存
+        // 延迟执行，确保属性写入已落盘
         await new Promise(resolve => setTimeout(resolve, 300))
         await applyHeadingNumbersToPage(pageName)
     }
-}
-
-/**
- * 在块树中查找指定块的上一个同级兄弟的编号
- */
-const findPrevSiblingNumber = (blocks: any[], targetUuid: string): string | null => {
-    const search = (children: any[]): string | null => {
-        for (let i = 0; i < children.length; i++) {
-            if (children[i].uuid === targetUuid) {
-                for (let j = i - 1; j >= 0; j--) {
-                    const sibling = children[j]
-                    if (getBlockHeadingState(sibling.uuid) === 'skip') continue
-                    const content = sibling.content || ''
-                    const firstLine = content.split(/\r?\n/)[0] || ''
-                    const numMatch = firstLine.match(/^#{1,6}\s+([\d.]+)\s+/)
-                    if (numMatch) return numMatch[1]
-                }
-                return null
-            }
-            if (children[i].children) {
-                const result = search(children[i].children)
-                if (result !== null) return result
-            }
-        }
-        return null
-    }
-    return search(blocks)
 }
 
 /**

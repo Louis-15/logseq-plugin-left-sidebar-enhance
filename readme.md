@@ -27,12 +27,13 @@ Automatically generates a table of contents in the left sidebar based on heading
 Manually add hierarchical numbers (e.g., `1`, `1.1`, `1.1.1`) to Markdown headings via a toolbar button — no background listeners, no performance impact.
 
 - **Toolbar button** → Click "Renumber" to number the current page
-- **Right-click menu** on block bullets:
-  - **Skip** — Exclude this heading from numbering; its children inherit the parent number prefix
-  - **Lock** — Keep the current number unchanged; subsequent siblings increment from it
-  - **Repeat** — Use the same number as the previous sibling (for duplicate numbering)
-- **Per-graph persistence** → Heading states are stored in your graph's assets folder (survives restarts)
-- **Graceful cleanup** → Orphaned block data is safely pruned 15s after startup
+- **Right-click menu** on block bullets (state is stored as a block property `numbering::`):
+  - **Skip** (`skip`) — Exclude this heading from numbering; its children inherit the parent number prefix
+  - **Skip subtree** (`skip-subtree`) — Exclude this heading and all of its descendants from numbering
+  - **Lock** (`locked`) — Keep the current number unchanged; subsequent siblings increment from it
+  - **Repeat** (`repeat`) — Use the same number as the previous sibling
+- **State follows the block** → Copy/move a block and its numbering state goes with it, across graphs
+- **Queryable** → Works with property queries such as `{{query (property numbering skip)}}`
 
 ### 3. Auto-Adjust Heading Levels (File-Based Graphs Only)
 
@@ -74,7 +75,7 @@ Automatically removes duplicate items between Favorites and History on startup a
 ## Usage
 
 - **Page Outline** — Opens any page; the TOC appears automatically in the left sidebar
-- **Heading Numbering** — Click the `[1 2 3]` icon in the page toolbar, or right-click a heading's block bullet for skip/lock/repeat
+- **Heading Numbering** — Click the `[1 2 3]` icon in the page toolbar, or right-click a heading's block bullet for skip / skip-subtree / lock / repeat
 - **Auto-Adjust Levels** — Use the command palette (`Ctrl+Shift+P`) and search for "Normalize headings on current page" or "Normalize headings in selection"
 - **Mouse-Over** — Click the `≡` button in the top-left corner to toggle between hidden and mouse-over modes
 
@@ -94,7 +95,22 @@ Automatically removes duplicate items between Favorites and History on startup a
 
 ## Data Storage
 
-Heading states (skip/lock/repeat) are stored as a JSON file under your graph's `assets/storages/left-sidebar-enhance/` directory, using Logseq's SandboxStorage API. Data is isolated per graph and invisible within Logseq's page list.
+Heading states (skip / skip-subtree / lock / repeat) are stored as a **native Logseq block property** on the block itself:
+
+```
+## 2.3 Heading text
+numbering:: skip
+```
+
+- Property key is `numbering`; valid values are `skip`, `skip-subtree`, `repeat`, `locked`
+- State travels with the block when moved or copied, and syncs across graphs — no UUID index required
+- The plugin hides the property in the block property panel. To hide it **even in edit mode**, add this to `config.edn`:
+
+```clojure
+:block-hidden-properties #{:numbering}
+```
+
+> Older versions used a JSON file under `assets/storages/left-sidebar-enhance/`. It is no longer read; you may delete it safely.
 
 ---
 

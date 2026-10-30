@@ -13,7 +13,6 @@ import { initHeadingNumbering } from './heading-numbering'
 import { removeToolbarIcon, updateToolbarIcon } from './heading-numbering/toolbarIcon'
 import { initHeadingButtons, cleanupHeadingButtons } from './heading-numbering/headingButtons'
 import { initAutoHeadingLevel } from './auto-heading-level'
-import { loadConfigFromPage } from './heading-numbering/blockStates'
 
 // 当前页面原始名称（全局状态，供各模块读取）
 let currentPageOriginalName: PageEntity["originalName"] = ""
@@ -84,16 +83,6 @@ const main = async () => {
   // === 层级标题自动编号初始化 ===
   await initHeadingNumbering()
 
-  // === 延时 15 秒后执行孤儿数据清理（不阻塞启动） ===
-  setTimeout(async () => {
-      try {
-          const { cleanUpOrphanedData } = await import('./heading-numbering/blockStates')
-          await cleanUpOrphanedData()
-      } catch (e) {
-          console.warn('[LSE] 孤儿数据清理失败:', e)
-      }
-  }, 15000)
-
   // === 标题等级自动调整初始化 ===
   initAutoHeadingLevel()
 
@@ -107,12 +96,11 @@ const main = async () => {
     parent.document.documentElement.classList.remove('lse-heading-enabled')
   })
 
-  // === 图谱切换时重置状态并重新加载块状态配置 ===
+  // === 图谱切换时重置状态 ===
   logseq.App.onCurrentGraphChanged(async () => {
     currentPageOriginalName = ""
     logseqVersionMd = await checkLogseqVersion()
-    // 图谱切换后重新加载新图谱的块状态
-    await loadConfigFromPage()
+    // 编号状态已改为块属性，切换图谱后无需重新加载任何配置文件
   })
 
 }/* end_main */

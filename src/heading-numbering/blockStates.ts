@@ -1,309 +1,146 @@
 /**
- * 块编号状态持久化存储模块（图谱级隔离存储）
+ * 标题编号状态（块属性）模块
  *
- * 使用 Logseq 官方的 SandboxStorage API 将块状态存储为 JSON 文件：
- * 块状态（blockStates）：各标题块的编号行为（skip/lock/repeat）
+ * 状态不再外挂在 JSON 里，而是写入块自身的属性：
  *
- * 存储位置：{图谱目录/assets/storages/left-sidebar-enhance/}{图谱名}.json
+ *     numbering:: skip | skip-subtree | repeat | locked
  *
- * 好处：
- * 1. 使用图谱名作为文件名，天然按图谱隔离
- * 2. 不会被 Logseq 当作笔记页面索引（在 Logseq 里看不见）
- * 3. 使用 Logseq 官方 API，稳定可靠
+ * 相比旧的外挂白名单，这样做的好处：
+ * 1. 状态跟着块走 —— 复制 / 粘贴 / 移动块时属性一起带过去，不再依赖 UUID
+ * 2. 跨图谱、跨设备天然同步（属性本身就在 md 文件 / 数据库里）
+ * 3. 用户可以用属性查询筛选，也可以手动修正
  *
- * JSON 结构：
- * {
- *   "blockStates": {
- *     "block-uuid-1": "skip",
- *     "block-uuid-2": "lock",
- *     "block-uuid-3": "repeat"
- *   }
- * }
- *
- * 升级迁移：
- * 首次使用新版时，会自动从旧版的 md 配置页面迁移数据。
+ * 四种状态的语义见 docs/design/块属性编号状态方案.md
  */
 
-// 旧版配置页面名称（用于迁移）
-const LEGACY_CONFIG_PAGE_NAME = 'lse-heading-numbering-config'
+/** 合法的编号状态值 */
+export type NumberingState = 'skip' | 'skip-subtree' | 'repeat' | 'locked'
 
-// ================ 沙箱存储 ================
+/** 块属性键（Logseq 内部统一按小写处理） */
+export const NUMBERING_PROP = 'numbering'
 
-// 缓存的存储实例
-let _storage: any = null
-// 缓存的当前图谱存储 key
-let _currentGraphKey: string = ''
+/** 四个合法值，用于快速校验 */
+const VALID_STATES: readonly string[] = ['skip', 'skip-subtree', 'repeat', 'locked']
+
+/** 判断字符串是否为合法状态值 */
+const isNumberingState = (value: string): value is NumberingState =>
+    VALID_STATES.includes(value)
 
 /**
- * 获取沙箱存储实例（单例）
+ * 把属性原始值规范化为状态值
+ *
+ * Logseq 的块属性值形态不稳定：可能是字符串，可能是数组（多值属性），
+ * 也可能被写成 [[skip]] 这样的页面引用形式，这里统一收敛。
+ * 非法值一律返回 null（按“无状态”处理，绝不猜测用户意图）。
  */
-const getStorage = () => {
-    if (!_storage) {
-        _storage = logseq.Assets.makeSandboxStorage()
-    }
-    return _storage
+const normalizeState = (raw: unknown): NumberingState | null => {
+    // 多值属性只认第一个
+    const value = Array.isArray(raw) ? raw[0] : raw
+    if (value === null || value === undefined) return null
+
+    let text = String(value).trim().toLowerCase()
+    // 去掉页面引用包裹：[[skip]] → skip
+    text = text.replace(/^\[\[|\]\]$/g, '').trim()
+
+    return isNumberingState(text) ? text : null
 }
 
 /**
- * 获取当前图谱对应的存储 key
- * 格式：{图谱名}.json（如 "AI与编程.json"）
+ * 在 properties 对象里查找属性值
+ *
+ * 不同模式下属性键可能是 'numbering'、':numbering' 或 ':logseq.property/numbering'，
+ * 因此按最后一段路径名做大小写无关匹配，避免被键名前缀差异坑到。
  */
-const getGraphKey = async (): Promise<string> => {
-    if (_currentGraphKey) return _currentGraphKey
+const findPropertyValue = (
+    properties: Record<string, unknown> | undefined,
+    name: string
+): unknown => {
+    if (!properties) return undefined
+    for (const key of Object.keys(properties)) {
+        const tail = key.split('/').pop()
+        if (!tail) continue
+        if (tail.replace(/^:/, '').toLowerCase() === name) return properties[key]
+    }
+    return undefined
+}
+
+/**
+ * 从块内容中解析属性（兜底路径）
+ *
+ * 标题块内容形如：
+ *     ## 2.3 标题正文
+ *     numbering:: skip
+ *
+ * 第一行是标题，绝不能被当成属性行，所以从第 2 行开始扫描。
+ * 这条路径用于 properties 尚未回填（或某些模式不返回属性）的情况。
+ */
+const parseStateFromContent = (content: string | undefined): NumberingState | null => {
+    if (!content) return null
+    const lines = content.split(/\r?\n/)
+    for (let i = 1; i < lines.length; i++) {
+        const matched = lines[i].match(/^\s*numbering::\s*(.+?)\s*$/i)
+        if (matched) return normalizeState(matched[1])
+    }
+    return null
+}
+
+/**
+ * 同步解析块状态（编号主流程使用，零额外 API 调用）
+ *
+ * 优先读 getPageBlocksTree 返回的 properties（已被 findHeaders 透传到标题节点），
+ * 读不到时回退到 content 里解析。
+ *
+ * @param properties 块树节点的 properties 字段
+ * @param content 块原始内容（可选，作为兜底）
+ */
+export const parseNumberingState = (
+    properties: Record<string, unknown> | undefined,
+    content?: string
+): NumberingState | null => {
+    const fromProperties = normalizeState(findPropertyValue(properties, NUMBERING_PROP))
+    if (fromProperties) return fromProperties
+    return parseStateFromContent(content)
+}
+
+/**
+ * 异步读取单个块的状态（右键菜单使用）
+ * 块不存在或读取失败时返回 null，调用方按“无状态”处理
+ */
+export const getBlockNumberingState = async (blockUuid: string): Promise<NumberingState | null> => {
     try {
-        const graph = await logseq.App.getCurrentGraph()
-        const graphName = graph?.name || 'default'
-        _currentGraphKey = `${graphName}.json`
-    } catch {
-        _currentGraphKey = 'default.json'
-    }
-    return _currentGraphKey
-}
-
-// ================ 内存缓存 ================
-
-// 块状态缓存：uuid → 状态字符串
-let cachedBlockStates: Map<string, string> = new Map()
-// 标记是否已加载过
-let isLoaded = false
-
-// ================ JSON 数据解析 ================
-
-/**
- * 从 JSON 数据对象中提取块状态到内存缓存
- */
-const parseConfigData = (data: any): void => {
-    // 加载块状态
-    if (data.blockStates && typeof data.blockStates === 'object') {
-        for (const [uuid, state] of Object.entries(data.blockStates)) {
-            if (typeof state === 'string' && state) {
-                cachedBlockStates.set(uuid, state)
-            }
-        }
-    }
-}
-
-/**
- * 将内存缓存序列化为 JSON 对象
- */
-const buildConfigData = (): object => {
-    const blockStatesObj: Record<string, string> = {}
-    for (const [uuid, state] of cachedBlockStates) {
-        blockStatesObj[uuid] = state
-    }
-    return {
-        blockStates: blockStatesObj
-    }
-}
-
-// ================ 数据加载 ================
-
-/**
- * 从沙箱存储（或旧版 md 页面）加载所有数据到内存缓存
- * 在插件启动和图谱切换时调用
- *
- * ⚠️ 安全设计：加载前备份现有缓存，加载失败时自动恢复
- * 防止 saveConfig() 因缓存意外为空而覆盖已有文件
- */
-export const loadConfigFromPage = async (): Promise<void> => {
-    // 备份当前缓存，以便加载失败时恢复
-    const backupStates = new Map(cachedBlockStates)
-
-    cachedBlockStates.clear()
-    isLoaded = false
-    // 图谱切换时重置 key 缓存
-    _currentGraphKey = ''
-
-    try {
-        const storage = getStorage()
-        const key = await getGraphKey()
-
-        // 尝试从沙箱存储读取
-        const raw = await storage.getItem(key)
-        if (raw) {
-            const data = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw))
-            parseConfigData(data)
-
-            // 🧹 升级迁移：清除旧版残留的 whitelist 字段（新版纯按钮触发，不再使用白名单）
-            if (data.whitelist !== undefined) {
-                delete data.whitelist
-                await storage.setItem(key, JSON.stringify(buildConfigData(), null, 2))
-                console.log('[LSE] 已清除旧版残留白名单数据')
-            }
-
-            isLoaded = true
-            console.log('[LSE] 块状态已加载 —', cachedBlockStates.size, '条记录')
-            return
-        }
-
-        // 沙箱存储为空，尝试从旧版 md 页面迁移
-        const migrated = await migrateFromLegacyPage()
-        if (migrated) {
-            isLoaded = true
-            console.log('[LSE] 已从旧版 md 页面迁移到沙箱存储 —', cachedBlockStates.size, '条块状态记录')
-            return
-        }
-
-        // 首次使用，数据为空
-        isLoaded = true
-        console.log('[LSE] 块状态配置为空（首次使用）')
+        const block = await logseq.Editor.getBlock(blockUuid)
+        if (!block) return null
+        return parseNumberingState(
+            block.properties as Record<string, unknown> | undefined,
+            block.content
+        )
     } catch (e) {
-        console.error('[LSE] 加载块状态配置失败，恢复上次缓存:', e)
-        // 恢复备份，避免后续 saveConfig 用空数据覆盖已有文件
-        cachedBlockStates = new Map(backupStates)
-        isLoaded = true
+        console.warn(`[LSE] 读取块 ${blockUuid} 的 numbering 属性失败:`, e)
+        return null
     }
 }
 
-// ================ 数据保存 ================
-
 /**
- * 将内存缓存中的所有数据写回沙箱存储
+ * 写入 / 清除块状态
+ *
+ * ⚠️ 顺序约束（重要）：写入属性会改变块内容，调用方必须在写入后重新读取块，
+ * 再做任何 updateBlock 文本替换，否则会把刚写入的属性行一并覆盖掉。
+ * 这里的错误会向上抛，避免出现“提示成功但实际没写进去”的假象。
+ *
+ * @param state 传 null 表示清除属性（恢复自动编号）
  */
-const saveConfig = async (): Promise<void> => {
+export const setBlockNumberingState = async (
+    blockUuid: string,
+    state: NumberingState | null
+): Promise<void> => {
     try {
-        const storage = getStorage()
-        const key = await getGraphKey()
-        const data = buildConfigData()
-        await storage.setItem(key, JSON.stringify(data, null, 2))
-    } catch (e) {
-        console.error('[LSE] 保存编号配置失败:', e)
-    }
-}
-
-// ================ 旧版迁移 ================
-
-/**
- * 从旧版 Logseq md 配置页面迁移数据到沙箱存储
- * 返回 true 表示迁移成功（有数据被迁移）
- */
-const migrateFromLegacyPage = async (): Promise<boolean> => {
-    try {
-        const page = await logseq.Editor.getPage(LEGACY_CONFIG_PAGE_NAME)
-        if (!page) return false // 旧页面不存在，无需迁移
-
-        const blocks = await logseq.Editor.getPageBlocksTree(LEGACY_CONFIG_PAGE_NAME)
-        if (!blocks || blocks.length === 0) return false
-
-        // 从旧页面提取 JSON 数据
-        for (const block of blocks) {
-            const content = block.content || ''
-            // 尝试从代码块中提取 JSON
-            const jsonMatch = content.match(/```json\s*\n?([\s\S]*?)\n?```/)
-            if (jsonMatch) {
-                try {
-                    parseConfigData(JSON.parse(jsonMatch[1].trim()))
-                } catch (e) {
-                    console.warn('[LSE] 旧版配置 JSON 解析失败:', e)
-                }
-                break
-            }
-            // 也尝试直接解析纯 JSON 内容
-            try {
-                const data = JSON.parse(content.trim())
-                if (data.whitelist || data.blockStates) {
-                    parseConfigData(data)
-                    break
-                }
-            } catch {
-                // 不是 JSON，跳过
-            }
-        }
-
-        // 如果有数据被加载，保存到沙箱存储
-        if (cachedBlockStates.size > 0) {
-            await saveConfig()
-            return true
+        if (state === null) {
+            await logseq.Editor.removeBlockProperty(blockUuid, NUMBERING_PROP)
+        } else {
+            await logseq.Editor.upsertBlockProperty(blockUuid, NUMBERING_PROP, state)
         }
     } catch (e) {
-        console.warn('[LSE] 旧版数据迁移失败:', e)
-    }
-    return false
-}
-
-// ================ 块状态操作 ================
-
-/**
- * 获取块的编号状态（skip / lock / repeat / undefined）
- */
-export const getBlockState = (blockUuid: string): string | undefined => {
-    const val = cachedBlockStates.get(blockUuid)
-    return val || undefined
-}
-
-/**
- * 设置块的编号状态
- * 传入 null 表示清除状态
- */
-export const setBlockState = async (blockUuid: string, state: string | null): Promise<void> => {
-    if (state === null || state === '') {
-        cachedBlockStates.delete(blockUuid)
-    } else {
-        cachedBlockStates.set(blockUuid, state)
-    }
-    await saveConfig()
-}
-
-// ================ 工具函数 ================
-
-/**
- * 检查配置是否已加载完成
- */
-export const isConfigLoaded = (): boolean => {
-    return isLoaded
-}
-
-/**
- * 判断字符串是否为 UUID 格式
- */
-const isUuidFormat = (str: string): boolean => {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
-}
-
-// ================ 孤儿数据清理 ================
-
-/**
- * 清理已不存在的块的配置数据
- * 在插件启动 15 秒后延时调用，不阻塞 Logseq 启动
- *
- * ⚠️ 安全说明：当 getBlock() 抛出异常时，保留该块状态
- * 避免因 Logseq 启动未完成/图谱同步中/临时 API 故障等
- * 系统性原因导致全部数据被误删
- */
-export const cleanUpOrphanedData = async (): Promise<void> => {
-    let removedBlocks = 0
-    let errorCount = 0
-
-    // 清理 blockStates 中已删除的块
-    const blockUuids = [...cachedBlockStates.keys()]
-    for (const uuid of blockUuids) {
-        try {
-            const block = await logseq.Editor.getBlock(uuid)
-            if (!block) {
-                // getBlock 返回 null → 块确实不存在 → 安全删除
-                cachedBlockStates.delete(uuid)
-                removedBlocks++
-            }
-        } catch (e) {
-            // 【关键】getBlock 抛出异常不能视为"块已删除"
-            // 可能是：Logseq 尚未就绪、图谱同步中、临时 API 故障
-            // 此时删除会导致有效数据永久丢失
-            errorCount++
-            console.warn(`[LSE] 检查块 ${uuid} 时出错，保留其状态:`, e)
-        }
-    }
-
-    if (removedBlocks > 0) {
-        await saveConfig()
-        console.log(`[LSE] 孤儿数据清理完成 — 移除了 ${removedBlocks} 个失效块状态` +
-            (errorCount > 0 ? `，${errorCount} 个块因错误已跳过保留` : ''))
-    } else if (errorCount > 0) {
-        // 有错误但无删除：可能是系统性问题，不清除任何数据
-        console.log(`[LSE] 孤儿数据清理跳过 — ${errorCount} 个块检查出错，保留全部现有状态`)
-    } else {
-        console.log('[LSE] 孤儿数据清理完成 — 无需清理')
+        console.error(`[LSE] 写入块 ${blockUuid} 的 numbering 属性失败:`, e)
+        throw e
     }
 }
-
-// 保持向后兼容的别名（旧名称，仅用于外部可能的动态引用）
-export const loadWhitelist = loadConfigFromPage

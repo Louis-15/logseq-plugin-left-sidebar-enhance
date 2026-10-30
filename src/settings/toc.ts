@@ -12,7 +12,7 @@ export const tocSettings = (logseqVersionMd: boolean, currentSettings?: Record<s
             title: '二、自动标题等级调整',
             type: 'heading',
             default: null,
-            description: '点击标题上方的「重新编号」按钮手动触发编号，此为纯辅助设置',
+            description: '点击标题上方的「重新编号」按钮手动触发编号，此为纯辅助设置。编号状态保存在块属性 numbering:: 中（skip / skip-subtree / repeat / locked）；如需在界面中彻底隐藏该属性，请在 config.edn 中加入：:block-hidden-properties #{:numbering}',
         })
 
     if (cfg[settingKeys.toc.master] === true) {
