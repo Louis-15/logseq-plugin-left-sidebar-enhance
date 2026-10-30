@@ -8,6 +8,7 @@ import { getHierarchicalTocBlocks, getHierarchicalTocBlocksForDb, HierarchicalTo
 import { settingKeys } from '../settings/keys'
 import { normalizePageHeadingsInternal } from '../auto-heading-level'
 import { parseNumberingState, getBlockNumberingState, setBlockNumberingState, NumberingState } from './blockStates'
+import { isYearLeadingHeading, stripNumberFromContent } from './headingText'
 import { detectPageCategoryRule, classifyHeadingsByCategory, ensureDefaultRule, loadAllCategoryRules, clearRuleCache, CategoryRule, matchRuleKeywords, SubHeadingRule } from './categoryRules'
 
 let isFileBasedGraph = false
@@ -38,6 +39,15 @@ const MULTI_NUMBER_PATTERN = /^(#{1,6})\s+(?:\d+[\d\.\-_\s→]*)+\s+(.+)$/
 
 const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+/**
+ * 判断一个数字串是否像年份（1900–2099）
+ *
+ * 插件生成的编号最多两三位（顶级编号上限约 79，区间编号最大 79），
+ * 不可能出现 1900 以上的 4 位数，因此把这类数字一律视为正文里的年份，
+ * 避免 "## 2023 年总结" 被当成 "编号 2023" 吃掉。
+ */
+const isYearLikeNumber = (num: string): boolean => /^(19|20)\d{2}$/.test(num)
+
 const createExtractOldNumberRegex = (oldDelimiter: string) => {
     const escapedDelimiter = escapeForRegex(oldDelimiter)
     return new RegExp(`^(#{1,6})\\s+(\\d+(?:${escapedDelimiter}\\d+)*${escapedDelimiter}?)\\s+(.+)$`)
@@ -57,7 +67,14 @@ const normalizeNumberString = (num: string, delimiter: string) => {
 // Extract a general number sequence after hashes when delimiter-specific extract fails
 const extractGeneralNumber = (content: string): string | null => {
     const m = content.match(/^(?:#{1,6})\s+([0-9][0-9\.\-\_\s→]*)/)
-    return m ? m[1].trim() : null
+    if (!m) return null
+
+    const num = m[1].trim()
+    // 年份保护：首段是 4 位年份时视为正文，不当作编号
+    const firstToken = num.split(/[.\-_\s→]+/)[0]
+    if (isYearLikeNumber(firstToken)) return null
+
+    return num
 }
 
 /**
@@ -116,6 +133,15 @@ const extractOldNumber = (content: string, oldDelimiter: string): { number: stri
         // Remove trailing delimiter if present
         if (number.endsWith(oldDelimiter)) {
             number = number.slice(0, -oldDelimiter.length)
+        }
+
+        // 年份保护：4 位年份不是插件生成的编号，按“无编号”处理，
+        // 同时保留原始内容，避免后续重写时吞掉年份
+        if (isYearLikeNumber(number)) {
+            return {
+                number: null,
+                textWithoutNumber: content
+            }
         }
 
         return {
@@ -205,6 +231,61 @@ export const applyHeadingNumbersToPage = async (pageName: string): Promise<void>
 
 
 /**
+ * 清理子树内所有标题的编号（skip-subtree 的幂等清理）
+ *
+ * 为什么每次编号都要清理：
+ * skip-subtree 的语义是“整棵子树不编号”，但如果子块在标记之前（或手动编辑时）
+ * 已经带有编号文本，仅靠“跳过不处理”会让这些旧编号永久残留。
+ * 因此每次走到 skip-subtree 分支时都执行一次幂等清理。
+ *
+ * 保留 locked / repeat：
+ * - locked：用户锁定的编号，插件永不修改
+ * - repeat：编号依赖上下文，父块 skip-subtree 后无法再自动恢复，清掉就丢了
+ *
+ * 每处理 10 个块让出一次事件循环，避免大子树批量写入卡住 UI。
+ */
+const stripNumbersInSubtree = async (children: HierarchicalTocBlock[] | undefined): Promise<void> => {
+    if (!children || children.length === 0) return
+
+    let processed = 0
+
+    const walk = async (nodes: HierarchicalTocBlock[]) => {
+        for (const node of nodes) {
+            const content = node.content || ''
+            const state = parseNumberingState(
+                node.properties as Record<string, unknown> | undefined,
+                content
+            )
+
+            if (state !== 'locked' && state !== 'repeat') {
+                const newContent = stripNumberFromContent(content)
+                if (newContent !== null) {
+                    try {
+                        await logseq.Editor.updateBlock(node.uuid, newContent)
+                        // 同步更新内存中的树，避免后续逻辑读到旧内容
+                        node.content = newContent
+                    } catch (e) {
+                        console.error(`[LSE] 清理块 ${node.uuid} 编号失败:`, e)
+                    }
+                }
+            }
+
+            processed++
+            if (processed % 10 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0))
+            }
+
+            if (node.children && node.children.length > 0) {
+                await walk(node.children)
+            }
+        }
+    }
+
+    await walk(children)
+}
+
+
+/**
  * 基于"看上一个同级兄弟"逻辑的编号推算
  * 
  * 核心规则：
@@ -272,14 +353,27 @@ const updateHierarchicalBlocks = async (
             )
 
             // 1. 整棵子树豁免（最高优先级）
-            // skip-subtree：自身与所有后代都不编号、不修改文本，直接终止递归
+            // skip-subtree：自身与所有后代都不编号；同时做一次幂等清理，
+            // 保证子树里在标记之前就已存在的旧编号也会被移除
             if (headingNumProp === 'skip-subtree') {
+                await stripNumbersInSubtree(node.children)
+                continue
+            }
+
+            // 1.2 年份保护
+            // 标题以 4 位年份开头时视为普通正文：不编号、不占序号、不改写文本
+            // 例如 "## 2023 年总结" 不能被改写成 "## 1 年总结"
+            if (isYearLeadingHeading(node.content)) {
+                if (node.children && node.children.length > 0) {
+                    // 子标题仍按父级编号前缀继续
+                    await processSiblings(node.children, parentNumberStr, undefined,
+                        categoryPrefix !== undefined ? _nextLevelSubHeadingRules : undefined)
+                }
                 continue
             }
 
             // 1.5 单块豁免检测
-            if (headingNumProp === 'skip') {
-                // 跳过此标题，不修改、不影响编号序列
+            if (headingNumProp === 'skip') {                // 跳过此标题，不修改、不影响编号序列
                 // 但仍需递归处理其子标题
                 if (node.children && node.children.length > 0) {
                     // skip 标题的子标题继承父级的编号前缀；H1→H2 过渡时传入分类的子标题规则
