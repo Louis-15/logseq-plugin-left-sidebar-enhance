@@ -32,6 +32,7 @@ Manually add hierarchical numbers (e.g., `1`, `1.1`, `1.1.1`) to Markdown headin
   - **Skip subtree** (`skip-subtree`) — Exclude this heading and all of its descendants from numbering
   - **Lock** (`locked`) — Keep the current number unchanged; subsequent siblings increment from it
   - **Repeat** (`repeat`) — Use the same number as the previous sibling
+- **State icons** → The block bullet turns into a state icon: skip ⊘, skip-subtree ⊘ (with inner ring), repeat ⧉, locked 🔒 (SVG line art that follows the theme text color)
 - **State follows the block** → Copy/move a block and its numbering state goes with it, across graphs
 - **Multi-digit guard** → Leading numbers of 3+ digits (`100`–`9999`) are treated as text while the heading is still numbered (`## 2002 的` → `## 1 2002 的`)
 - **Queryable** → Works with property queries such as `{{query (property numbering skip)}}`

@@ -1,18 +1,21 @@
 /**
  * 块圆点状态角标
  *
- * 把标题块的 numbering 状态映射到块前方的小圆点上：
- *   skip         → ▶️
- *   skip-subtree → ⏩
- *   repeat       → ♻️
- *   locked       → 🔒
+ * 把标题块的 numbering 状态映射到块前方的小圆点上，用 SVG 线稿图标表示：
+ *   skip         → 禁止符号（圆圈 + 斜杠）
+ *   skip-subtree → 禁止符号 + 同心内圈（连整棵子树一起禁用）
+ *   repeat       → 复制符号（双矩形）
+ *   locked       → 锁形符号
  *
  * 实现要点：
  * 1. 不给圆点换结构，只在 .bullet-container 上挂 data-lse-num 属性，视觉全部交给 CSS。
  *    这样 Logseq 的折叠、拖拽、右键菜单等原生行为完全不受影响。
- * 2. numbering 属性通常是隐藏的（config.edn 的 :block-hidden-properties），
+ * 2. 图标用 mask-image 而不是 background-image：
+ *    mask 只看图形的透明度，颜色由 background-color（currentColor）决定，
+ *    因此图标能自动跟随主题文字颜色，不会像 emoji 那样自带配色。
+ * 3. numbering 属性通常是隐藏的（config.edn 的 :block-hidden-properties），
  *    无法从 DOM 读出来，因此状态来自内存缓存 CACHE。
- * 3. Logseq 会因编辑而重建 .ls-block 的 DOM，所以用 MutationObserver 重新挂属性；
+ * 4. Logseq 会因编辑而重建 .ls-block 的 DOM，所以用 MutationObserver 重新挂属性；
  *    这里只做属性写入，不重新请求数据，避免频繁 IO。
  */
 
@@ -27,7 +30,68 @@ const cache = new Map<string, NumberingState>()
 let observer: MutationObserver | null = null
 let applyTimer: number | null = null
 
-/** 角标样式：把灰色小圆点替换成 emoji 图标 */
+/**
+ * 四个状态对应的 SVG 图标
+ *
+ * 统一约定：
+ * - 24×24 视口、fill='none'、stroke 线稿
+ * - stroke 用白色而不是 currentColor：作为 mask 时白色在 alpha 和 luminance
+ *   两种模式下都可见（黑色在 luminance 模式下会被当成完全透明）
+ * - 数组顺序与 NumberingState 一致，便于批量生成 CSS
+ */
+const ICONS: Record<NumberingState, string> = {
+    // 禁止：外圈 + 斜杠
+    'skip': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M4.929 4.929 19.07 19.071'/></svg>`,
+
+    // 禁止整棵子树：外圈 + 斜杠 + 同心内圈
+    // 内圈半径取 4.5，保证 1em 大小下与斜杠仍能分辨
+    'skip-subtree': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='4.5'/><path d='M4.929 4.929 19.07 19.071'/></svg>`,
+
+    // 复制：双矩形
+    'repeat': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect width='14' height='14' x='8' y='8' rx='2' ry='2'/><path d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'/></svg>`,
+
+    // 锁：锁体 + 锁梁 + 钥匙孔
+    // 钥匙孔原本是 r=1 的空心圆，1em 下几乎看不见，改为实心并略微放大
+    'locked': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='16' r='1.2' fill='white' stroke='none'/><rect x='3' y='10' width='18' height='12' rx='2'/><path d='M7 10V7a5 5 0 0 1 10 0v3'/></svg>`,
+}
+
+/**
+ * 把 SVG 转成 CSS 可用的 data URI
+ *
+ * 只编码三个会破坏 CSS url() 的字符：< > #（# 是 URL 片段分隔符）
+ * 引号统一用单引号，避免与外层 CSS 的双引号冲突。
+ */
+const toMaskUrl = (svg: string): string =>
+    `url("data:image/svg+xml,${svg
+        .replace(/#/g, '%23')
+        .replace(/</g, '%3C')
+        .replace(/>/g, '%3E')
+        .replace(/"/g, "'")}")`
+
+/** 单个状态的 mask 规则 */
+const badgeRule = (state: NumberingState): string => {
+    const url = toMaskUrl(ICONS[state])
+    return `
+.bullet-container[${ATTR}="${state}"] .bullet::before {
+    content: "";
+    display: block;
+    width: 0.85em;
+    height: 0.85em;
+    background-color: currentColor;
+    opacity: 0.8;
+    -webkit-mask-image: ${url};
+    mask-image: ${url};
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+`
+}
+
+/** 角标样式：把灰色小圆点替换成 SVG 图标 */
 const BADGE_CSS = `
 .bullet-container[${ATTR}] .bullet {
     display: inline-flex !important;
@@ -38,16 +102,12 @@ const BADGE_CSS = `
     background-color: transparent !important;
     border-radius: 0 !important;
     opacity: 1 !important;
-    font-size: 0.8em;
+    font-size: 1em;
     font-style: normal;
     line-height: 1;
     transition: none !important;
 }
-.bullet-container[${ATTR}="skip"] .bullet::before { content: "▶️"; }
-.bullet-container[${ATTR}="skip-subtree"] .bullet::before { content: "⏩"; }
-.bullet-container[${ATTR}="repeat"] .bullet::before { content: "♻️"; }
-.bullet-container[${ATTR}="locked"] .bullet::before { content: "🔒"; }
-`
+${(['skip', 'skip-subtree', 'repeat', 'locked'] as NumberingState[]).map(badgeRule).join('')}`
 
 /**
  * 递归遍历原始块树，收集带状态的块
