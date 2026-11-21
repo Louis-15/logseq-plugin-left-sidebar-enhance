@@ -47,8 +47,8 @@ const ICONS: Record<NumberingState, string> = {
     // 内圈半径取 4.5，保证 1em 大小下与斜杠仍能分辨
     'skip-subtree': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='4.5'/><path d='M4.929 4.929 19.07 19.071'/></svg>`,
 
-    // 复制：双矩形
-    'repeat': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect width='14' height='14' x='8' y='8' rx='2' ry='2'/><path d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'/></svg>`,
+    // 重复：环形箭头（lucide repeat）
+    'repeat': `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m17 2 4 4-4 4'/><path d='M3 11v-1a4 4 0 0 1 4-4h14'/><path d='m7 22-4-4 4-4'/><path d='M21 13v1a4 4 0 0 1-4 4H3'/></svg>`,
 
     // 锁：锁体 + 锁梁 + 钥匙孔
     // 钥匙孔原本是 r=1 的空心圆，1em 下几乎看不见，改为实心并略微放大
@@ -249,7 +249,96 @@ const scheduleApply = (): void => {
     applyTimer = window.setTimeout(() => {
         applyTimer = null
         applyBulletBadges()
-    }, 200)
+    }, 100)
+}
+
+/**
+ * 右键事件改派（修复「插件菜单项时有时无」）
+ *
+ * Logseq 的右键分发逻辑（frontend/components/content.cljs hiccup-content）：
+ *
+ *   (cond
+ *     page                    → 页面菜单
+ *     block-ref               → 引用菜单
+ *     (and (state/selection?) (not (d/has-class? target "bullet")))
+ *                             → custom-context-menu-content   ;; 块选中菜单，源码中没有插件项
+ *     (and block-id ...)      → block-context-menu-content    ;; 块菜单，含插件项
+ *     :else                   → nil)
+ *
+ * 而"块菜单"那一支会顺手创建选区：
+ *   (state/clear-selection!) (state/conj-selection-block! block :down)
+ *
+ * 于是第一次右键拿到完整菜单，同时产生了选区；此后再右键时，
+ * 只要 target 不是 .bullet 元素本身（差几像素就会落到 .bullet-container
+ * 或 .block-control-wrap 上），就会掉进"块选中菜单"，插件项全部消失。
+ *
+ * 修复方式：在捕获阶段拦截落在带状态圆点区域内的右键事件，
+ * 阻止 Logseq 用错误的 target 判断，改为在 .bullet 上重新派发一次，
+ * 使分支条件恒为"target 带 bullet 类"，始终走完整菜单。
+ */
+
+/** 标记事件由本模块改派，避免递归拦截 */
+const RETARGET_FLAG = '__lseRetargeted'
+
+let contextMenuHandler: ((e: MouseEvent) => void) | null = null
+
+const onContextMenuCapture = (e: MouseEvent): void => {
+    // 自己派发的事件直接放行
+    if ((e as any)[RETARGET_FLAG]) return
+
+    const target = e.target as HTMLElement | null
+    if (!target || typeof target.closest !== 'function') return
+
+    // 只处理圆点区域（bullet-container 及其外层 block-control-wrap），
+    // 正文区域的右键保持 Logseq 原生行为
+    const container = target.closest('.bullet-container') as HTMLElement | null
+    const control = target.closest('.block-control-wrap') as HTMLElement | null
+    if (!container && !control) return
+
+    // 判定是否为本插件的标题块，必须用块 uuid + 内存缓存，
+    // 不能用 data-lse-num 属性：Logseq 在创建选区后会重建块 DOM，
+    // 属性在 MutationObserver 重新挂上之前有一段空窗期（曾导致偶发失效）
+    const blockEl = (control || container)!.closest('.ls-block') as HTMLElement | null
+    const uuid = container?.getAttribute('blockid')
+        || blockEl?.getAttribute('blockid')
+        || ''
+    const state = uuid ? cache.get(uuid) : undefined
+    if (!state) return
+
+    // 顺手补挂属性，避免图标在重建后的空窗期里消失
+    const marked = [container, target.closest('.bullet-link-wrap'), control]
+    for (const el of marked) {
+        if (el && el.getAttribute(ATTR) !== state) el.setAttribute(ATTR, state)
+    }
+
+    // target 已经是 .bullet 时无需改派
+    if (target.classList.contains('bullet')) return
+
+    const dot = (control || container)!.querySelector('.bullet') as HTMLElement | null
+    // 圆点被隐藏（如文档模式下 hide-inner-bullet）时不改派
+    if (!dot || dot.getClientRects().length === 0) return
+
+    // 阻止 Logseq 挂在 window 冒泡阶段的处理器看到错误的 target
+    e.stopPropagation()
+    e.preventDefault()
+
+    const synthetic = new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        view: parent.window as any,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        screenX: e.screenX,
+        screenY: e.screenY,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+        button: 2,
+        buttons: 2,
+    });
+    (synthetic as any)[RETARGET_FLAG] = true
+    dot.dispatchEvent(synthetic)
 }
 
 /**
@@ -268,11 +357,17 @@ export const refreshPageBulletBadges = async (pageName: string): Promise<void> =
 }
 
 /**
- * 初始化角标：注入样式 + 监听 DOM 重建
+ * 初始化角标：注入样式 + 监听 DOM 重建 + 右键改派
  * @param retry 剩余重试次数（主内容区可能尚未渲染完成）
  */
 export const initBulletBadges = (retry: number = 20): void => {
     logseq.provideStyle(BADGE_CSS)
+
+    // 右键改派不依赖主内容区是否就绪，单独注册一次即可
+    if (!contextMenuHandler) {
+        contextMenuHandler = onContextMenuCapture
+        parent.document.addEventListener('contextmenu', contextMenuHandler, true)
+    }
 
     if (observer) return
 
@@ -292,6 +387,10 @@ export const cleanupBulletBadges = (): void => {
     if (observer) {
         observer.disconnect()
         observer = null
+    }
+    if (contextMenuHandler) {
+        parent.document.removeEventListener('contextmenu', contextMenuHandler, true)
+        contextMenuHandler = null
     }
     if (applyTimer !== null) {
         clearTimeout(applyTimer)
