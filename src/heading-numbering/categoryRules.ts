@@ -4,7 +4,7 @@
  * 功能：
  * 1. 从插件目录下的 category-rules/*.json 文件加载编号规则
  * 2. 解析笔记 YAML frontmatter 中的 tags，匹配对应的区间编号规则
- * 3. 按区间规则将 H1 标题分类（位置法 + 关键词匹配）
+ * 3. 按区间规则将 H1 标题分类（关键词匹配 + 兜底区间）
  *
  * 规则文件存储：{插件根目录}/category-rules/{规则名}.json
  * 例如：c:\Users\aaa\.logseq\plugins\left-sidebar-enhance\category-rules\人设标签.json
@@ -26,10 +26,10 @@ export interface SubHeadingRule {
 
 /** 单个区间的定义 */
 export interface CategoryDef {
-    id: number                    // 区间 ID（1-9），编号前缀 = id × 10
+    id: number                    // 区间 ID（0-9），编号前缀 = id × 10（区间 0 → 01、02）
     name: string                  // 区间名称（用于调试和 UI 显示）
-    keywords?: string[]           // 关键词列表（positionBased 为 true 时不需要）
-    positionBased?: boolean       // 是否使用位置法分类（必须恰好一个区间为 true，且 id 为 1）
+    keywords?: string[]           // 关键词列表（子串包含匹配）
+    positionBased?: boolean       // 兜底区间：标题未匹配任何关键词时归它（通常只有一个，且 id 为 1）
     subHeadings?: SubHeadingRule[]  // 子标题固定编号规则（可选）
 }
 
@@ -64,7 +64,25 @@ let ruleCache: Map<string, CategoryRule> | null = null
 const getDefaultRule = (): CategoryRule => ({
     tag: '人设标签',
     categories: [
-        { id: 1, name: '特征类', positionBased: true },
+        {
+            id: 0,
+            name: '必选与可选标签',
+            keywords: ['必选标签', '可选标签'],
+            subHeadings: [
+                { number: 1, keywords: ['必选标签'] },
+                { number: 2, keywords: ['可选标签'] },
+            ],
+        },
+        {
+            id: 1,
+            name: '特征类',
+            positionBased: true,
+            keywords: ['特征', '组合的化学反应'],
+            subHeadings: [
+                { number: 1, keywords: ['特征'] },
+                { number: 1, keywords: ['组合的化学反应'] },
+            ],
+        },
         { id: 2, name: '搭配标签', keywords: ['反差', '分类及搭配标签', '通用搭配标签'] },
         { id: 3, name: '深度分析', keywords: ['适配度分析', '形成原因', '与其他标签的区别'] },
         { id: 4, name: '爱情线', keywords: ['爱情线'] },
@@ -234,7 +252,22 @@ export const detectPageCategoryRule = async (pageName: string): Promise<Category
 
 // ==================== 标题分类 ====================
 
-/** 按区间规则对 H1 标题进行分类 */
+/**
+ * 按区间规则对 H1 标题进行分类
+ *
+ * 分类规则：
+ * 1. 每个区间用自己的 keywords 匹配标题（子串包含）；
+ * 2. 未匹配任何关键词的标题归「兜底区间」（positionBased，通常是区间 1），
+ *    没有兜底区间时归第一个区间；
+ * 3. 一旦命中过某个区间，后续未匹配的标题跟随该区间，避免匿名标题
+ *    跳回前面的区间造成编号穿插。
+ *
+ * 为什么不再用「锚点」算法：
+ * 早期规则里特征类永远是第一个区间，所以用「第一个命中其它区间的标题之前，
+ * 全部归特征类」即可。区间 0（必选/可选标签）加入后，特征类不再是"排在最前"
+ * 的区间：如果「特征」出现在「必选标签」之后，锚点算法会把它错归到区间 0。
+ * 因此改为逐条匹配 + 兜底，顺序不再影响归属。
+ */
 export const classifyHeadingsByCategory = (
     headers: HierarchicalTocBlock[],
     rule: CategoryRule
@@ -247,69 +280,33 @@ export const classifyHeadingsByCategory = (
 
     if (headers.length === 0) return result
 
-    let anchorIndex = -1
+    // 兜底区间：positionBased 标记的区间（特征类）
+    const fallbackCat = rule.categories.find(c => c.positionBased)
+    const fallbackId = fallbackCat ? fallbackCat.id : (rule.categories[0]?.id ?? 1)
 
-    for (let i = 0; i < headers.length; i++) {
-        const header = headers[i]
+    let lastMatchedId = fallbackId
+
+    for (const header of headers) {
         if (header.level !== 1) continue
 
         const titleText = extractTitleText(header.content || '')
 
+        let matchedId: number | null = null
+
         for (const cat of rule.categories) {
-            if (cat.positionBased || cat.id === 1) continue
             if (!cat.keywords || cat.keywords.length === 0) continue
 
             if (matchKeywords(titleText, cat.keywords)) {
-                anchorIndex = i
+                matchedId = cat.id
                 break
             }
         }
 
-        if (anchorIndex >= 0) break
-    }
-
-    if (anchorIndex < 0) {
-        const positionBasedCat = rule.categories.find(c => c.positionBased)
-        const targetId = positionBasedCat ? positionBasedCat.id : 1
-        for (const header of headers) {
-            if (header.level === 1) {
-                result.get(targetId)!.push(header)
-            }
-        }
-        return result
-    }
-
-    const positionBasedCat = rule.categories.find(c => c.positionBased)
-    const positionBasedId = positionBasedCat ? positionBasedCat.id : 1
-    let lastMatchedId = positionBasedId
-
-    for (let i = 0; i < headers.length; i++) {
-        const header = headers[i]
-        if (header.level !== 1) continue
-
-        const titleText = extractTitleText(header.content || '')
-
-        if (i < anchorIndex) {
-            result.get(positionBasedId)!.push(header)
-            lastMatchedId = positionBasedId
+        if (matchedId !== null) {
+            lastMatchedId = matchedId
+            result.get(matchedId)!.push(header)
         } else {
-            let matched = false
-
-            for (const cat of rule.categories) {
-                if (cat.positionBased || cat.id === 1) continue
-                if (!cat.keywords || cat.keywords.length === 0) continue
-
-                if (matchKeywords(titleText, cat.keywords)) {
-                    result.get(cat.id)!.push(header)
-                    lastMatchedId = cat.id
-                    matched = true
-                    break
-                }
-            }
-
-            if (!matched) {
-                result.get(lastMatchedId)!.push(header)
-            }
+            result.get(lastMatchedId)!.push(header)
         }
     }
 

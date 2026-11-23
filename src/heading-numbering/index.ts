@@ -349,11 +349,14 @@ const updateHierarchicalBlocks = async (
 
                 // 构建完整编号（与上一个兄弟相同）
                 // H4 特殊格式：仅用序号+顿号，不带父级前缀
+                // 分类模式的顶级标题沿用区间前缀（区间 0 → 01、02）
                 const currentFullNumber = level === 4
                     ? `${repeatNumber}`
                     : (parentNumberStr
                         ? `${parentNumberStr}${newDelimiter}${repeatNumber}`
-                        : `${repeatNumber}`)
+                        : (categoryPrefix !== undefined
+                            ? formatCategoryNumber(categoryPrefix + repeatNumber)
+                            : `${repeatNumber}`))
 
                 // 像普通标题一样处理文本更新
                 const fullContent = node.content || ''
@@ -403,7 +406,7 @@ const updateHierarchicalBlocks = async (
                     lastSiblingNumber = Math.max(lastSiblingNumber, matchedRule.number)
                     // 分类级：categoryPrefix + 固定个位；子级：父编号.固定个位
                     const currentFullNumber = categoryPrefix !== undefined
-                        ? `${categoryPrefix + matchedRule.number}`
+                        ? formatCategoryNumber(categoryPrefix + matchedRule.number)
                         : `${parentNumberStr}${newDelimiter}${matchedRule.number}`
 
                     // 更新标题文本（内联，与自动编号逻辑一致）
@@ -457,7 +460,7 @@ const updateHierarchicalBlocks = async (
                 : (parentNumberStr
                     ? `${parentNumberStr}${newDelimiter}${lastSiblingNumber}`
                     : (categoryPrefix !== undefined
-                        ? `${categoryPrefix + lastSiblingNumber}`
+                        ? formatCategoryNumber(categoryPrefix + lastSiblingNumber)
                         : `${lastSiblingNumber}`))
 
             // 处理标题文本
@@ -537,6 +540,15 @@ const extractNumberFromHeading = (firstLine: string, delimiter: string): string 
     if (number) return number
     return extractGeneralNumber(firstLine)
 }
+
+/**
+ * 分类模式下 H1 编号的格式化
+ *
+ * 区间前缀 = id × 10，区间 0 的前缀就是 0，直接相加只会得到 1、2。
+ * 这里统一补足两位，让区间 0 输出 01、02，与区间 1 的 11、区间 2 的 21
+ * 保持同样的两位数观感；id ≥ 1 本来已是两位，补零不改变结果。
+ */
+const formatCategoryNumber = (n: number): string => String(n).padStart(2, '0')
 
 /**
  * 处理编号相关设置变更
